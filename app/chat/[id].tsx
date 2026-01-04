@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert, FlatList as RNFlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check } from 'lucide-react-native';
+import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
@@ -24,6 +25,16 @@ interface Task {
   createdAt: string;
 }
 
+interface ChatMessage {
+  id: string;
+  text: string;
+  mediaUrl?: string;
+  mediaType?: 'permanent' | 'ephemeral';
+  isViewed?: boolean;
+  isSent: boolean;
+  createdAt: string;
+}
+
 export default function ChatScreen() {
   const { theme } = useTheme();
   const router = useRouter();
@@ -37,10 +48,15 @@ export default function ChatScreen() {
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskDate, setNewTaskDate] = useState('');
   const [newTaskTime, setNewTaskTime] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [showPhotoOptions, setShowPhotoOptions] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [photoType, setPhotoType] = useState<'permanent' | 'ephemeral'>('permanent');
 
   const chatUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
   const NOTES_KEY = `@chat_notes_${id}`;
   const TASKS_KEY = `@chat_tasks_${id}`;
+  const MESSAGES_KEY = `@chat_messages_${id}`;
 
   useEffect(() => {
     const loadNotes = async () => {
@@ -65,9 +81,21 @@ export default function ChatScreen() {
       }
     };
 
+    const loadMessages = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(MESSAGES_KEY);
+        if (stored) {
+          setMessages(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.log('Error loading messages:', error);
+      }
+    };
+
     loadNotes();
     loadTasks();
-  }, [id, NOTES_KEY, TASKS_KEY]);
+    loadMessages();
+  }, [id, NOTES_KEY, TASKS_KEY, MESSAGES_KEY]);
 
   const saveNotes = async (updatedNotes: Note[]) => {
     try {
@@ -153,6 +181,94 @@ export default function ChatScreen() {
     const updatedTasks = tasks.filter(t => t.id !== taskId);
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
+  };
+
+  const saveMessages = async (updatedMessages: ChatMessage[]) => {
+    try {
+      await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(updatedMessages));
+    } catch (error) {
+      console.log('Error saving messages:', error);
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant permission to access photos');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setSelectedPhoto(result.assets[0].uri);
+        setShowPhotoOptions(true);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleSendPhoto = () => {
+    if (!selectedPhoto) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      text: '',
+      mediaUrl: selectedPhoto,
+      mediaType: photoType,
+      isViewed: false,
+      isSent: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
+    saveMessages(updatedMessages);
+    setSelectedPhoto(null);
+    setShowPhotoOptions(false);
+    setPhotoType('permanent');
+  };
+
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      text: message.trim(),
+      isSent: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
+    saveMessages(updatedMessages);
+    setMessage('');
+  };
+
+  const handleViewEphemeralPhoto = (messageId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    const updatedMessages = messages.map(m =>
+      m.id === messageId ? { ...m, isViewed: true } : m
+    );
+    setMessages(updatedMessages);
+    saveMessages(updatedMessages);
   };
 
   return (
@@ -262,13 +378,63 @@ export default function ChatScreen() {
           </ScrollView>
         ) : (
           <View style={styles.messagesContainer}>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              Start a conversation with {chatUser.username}
-            </Text>
+            {messages.length === 0 ? (
+              <View style={styles.emptyMessagesView}>
+                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                  Start a conversation with {chatUser.username}
+                </Text>
+              </View>
+            ) : (
+              <RNFlatList
+                data={messages}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.messagesList}
+                renderItem={({ item }) => (
+                  <View style={[styles.messageBubble, item.isSent ? styles.sentMessage : styles.receivedMessage]}>
+                    {item.mediaUrl ? (
+                      <View style={styles.mediaContainer}>
+                        {item.mediaType === 'ephemeral' && !item.isViewed ? (
+                          <Pressable
+                            onPress={() => handleViewEphemeralPhoto(item.id)}
+                            style={[styles.ephemeralPlaceholder, { backgroundColor: theme.card }]}
+                          >
+                            <Clock size={32} color={theme.textSecondary} />
+                            <Text style={[styles.ephemeralText, { color: theme.textSecondary }]}>Tap to view once</Text>
+                          </Pressable>
+                        ) : item.mediaType === 'ephemeral' && item.isViewed ? (
+                          <View style={[styles.ephemeralViewed, { backgroundColor: theme.card }]}>
+                            <Text style={[styles.ephemeralViewedText, { color: theme.textSecondary }]}>Photo viewed</Text>
+                          </View>
+                        ) : (
+                          <Image source={{ uri: item.mediaUrl }} style={styles.messageImage} contentFit="cover" />
+                        )}
+                        {item.mediaType === 'ephemeral' && (
+                          <View style={styles.mediaTypeBadge}>
+                            <Clock size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                        {item.mediaType === 'permanent' && (
+                          <View style={[styles.mediaTypeBadge, { backgroundColor: COLORS.skyBlue }]}>
+                            <Infinity size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={[styles.messageText, { color: item.isSent ? COLORS.white : theme.text }]}>
+                        {item.text}
+                      </Text>
+                    )}
+                  </View>
+                )}
+              />
+            )}
           </View>
         )}
 
         <View style={[styles.inputContainer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+          <Pressable onPress={handlePickImage} style={[styles.photoButton, { backgroundColor: theme.inputBackground }]}>
+            <ImageIcon size={20} color={theme.text} />
+          </Pressable>
           <TextInput
             style={[styles.input, { color: theme.text, backgroundColor: theme.inputBackground }]}
             placeholder="Type a message..."
@@ -278,11 +444,8 @@ export default function ChatScreen() {
             multiline
           />
           <Pressable
-            onPress={() => {
-              if (message.trim()) {
-                setMessage('');
-              }
-            }}
+            onPress={handleSendMessage}
+            disabled={!message.trim()}
             style={[styles.sendButton, { backgroundColor: message.trim() ? COLORS.primary : theme.border }]}
           >
             <Send size={20} color={COLORS.white} />
@@ -350,6 +513,79 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showPhotoOptions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowPhotoOptions(false);
+          setSelectedPhoto(null);
+        }}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={[styles.photoModalContent, { backgroundColor: theme.card }]}>
+            {selectedPhoto && (
+              <Image source={{ uri: selectedPhoto }} style={styles.photoPreview} contentFit="cover" />
+            )}
+            
+            <View style={styles.photoTypeSelector}>
+              <Text style={[styles.photoTypeTitle, { color: theme.text }]}>Send as:</Text>
+              <View style={styles.photoTypeOptions}>
+                <Pressable
+                  onPress={() => setPhotoType('permanent')}
+                  style={[
+                    styles.photoTypeOption,
+                    { backgroundColor: photoType === 'permanent' ? COLORS.skyBlue : theme.inputBackground },
+                  ]}
+                >
+                  <Infinity size={24} color={photoType === 'permanent' ? COLORS.white : theme.text} />
+                  <Text style={[styles.photoTypeLabel, { color: photoType === 'permanent' ? COLORS.white : theme.text }]}>
+                    Permanent
+                  </Text>
+                  <Text style={[styles.photoTypeDesc, { color: photoType === 'permanent' ? COLORS.white : theme.textSecondary }]}>
+                    Can be viewed anytime
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setPhotoType('ephemeral')}
+                  style={[
+                    styles.photoTypeOption,
+                    { backgroundColor: photoType === 'ephemeral' ? COLORS.skyBlue : theme.inputBackground },
+                  ]}
+                >
+                  <Clock size={24} color={photoType === 'ephemeral' ? COLORS.white : theme.text} />
+                  <Text style={[styles.photoTypeLabel, { color: photoType === 'ephemeral' ? COLORS.white : theme.text }]}>
+                    View Once
+                  </Text>
+                  <Text style={[styles.photoTypeDesc, { color: photoType === 'ephemeral' ? COLORS.white : theme.textSecondary }]}>
+                    Disappears after viewing
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.photoModalActions}>
+              <Pressable
+                onPress={() => {
+                  setShowPhotoOptions(false);
+                  setSelectedPhoto(null);
+                }}
+                style={[styles.photoModalBtn, { backgroundColor: theme.inputBackground }]}
+              >
+                <Text style={[styles.photoModalBtnText, { color: theme.text }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSendPhoto}
+                style={[styles.photoModalBtn, styles.photoModalBtnPrimary, { backgroundColor: COLORS.skyBlue }]}
+              >
+                <Send size={18} color={COLORS.white} />
+                <Text style={styles.photoModalBtnTextPrimary}>Send</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -391,6 +627,9 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
+  },
+  emptyMessagesView: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -399,12 +638,80 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
   },
+  messagesList: {
+    padding: 16,
+    gap: 12,
+  },
+  messageBubble: {
+    maxWidth: '75%',
+    borderRadius: 16,
+    padding: 12,
+    marginVertical: 4,
+  },
+  sentMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: COLORS.skyBlue,
+  },
+  receivedMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E5E5EA',
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  mediaContainer: {
+    position: 'relative',
+  },
+  messageImage: {
+    width: 200,
+    height: 250,
+    borderRadius: 12,
+  },
+  mediaTypeBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    padding: 6,
+  },
+  ephemeralPlaceholder: {
+    width: 200,
+    height: 250,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ephemeralText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  ephemeralViewed: {
+    width: 200,
+    height: 100,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ephemeralViewedText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
   inputContainer: {
     flexDirection: 'row',
     padding: 12,
     borderTopWidth: 1,
-    gap: 12,
+    gap: 8,
     alignItems: 'flex-end',
+  },
+  photoButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
@@ -582,6 +889,75 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   modalSubmitText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  photoModalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 20,
+    gap: 20,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+  },
+  photoTypeSelector: {
+    gap: 12,
+  },
+  photoTypeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  photoTypeOptions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  photoTypeOption: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  photoTypeLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  photoTypeDesc: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  photoModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  photoModalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  photoModalBtnPrimary: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  photoModalBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  photoModalBtnTextPrimary: {
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '600',

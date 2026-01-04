@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
@@ -23,6 +24,8 @@ export default function CreateScreen() {
   const [caption, setCaption] = useState('');
   const [showAspectModal, setShowAspectModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<Video>(null);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
@@ -100,6 +103,7 @@ export default function CreateScreen() {
     if (!result.canceled && result.assets[0]) {
       setSelectedMedia(result.assets[0].uri);
       setMediaType(result.assets[0].type || 'image');
+      setIsPlaying(false);
     }
   };
 
@@ -124,6 +128,27 @@ export default function CreateScreen() {
     if (!result.canceled && result.assets[0]) {
       setSelectedMedia(result.assets[0].uri);
       setMediaType(result.assets[0].type || 'image');
+      setIsPlaying(false);
+    }
+  };
+
+  const handlePlayPause = async () => {
+    if (!videoRef.current) return;
+    
+    if (isPlaying) {
+      await videoRef.current.pauseAsync();
+    } else {
+      await videoRef.current.playAsync();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleVideoStatusUpdate = (status: AVPlaybackStatus) => {
+    if (status.isLoaded) {
+      setIsPlaying(status.isPlaying);
+      if (status.didJustFinish) {
+        setIsPlaying(false);
+      }
     }
   };
 
@@ -189,20 +214,46 @@ export default function CreateScreen() {
             <View style={[styles.previewSection, { backgroundColor: theme.card }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Preview</Text>
               <View style={styles.previewContainer}>
-                <Image
-                  source={{ uri: selectedMedia }}
-                  style={[
-                    styles.preview,
-                    aspectRatio !== 'original' && {
-                      aspectRatio: getAspectRatioValue(aspectRatio),
-                    },
-                  ]}
-                  contentFit="cover"
-                />
-                {mediaType === 'video' && (
-                  <View style={styles.videoIndicator}>
-                    <VideoIcon size={32} color={COLORS.white} />
-                  </View>
+                {mediaType === 'video' ? (
+                  <>
+                    <Video
+                      ref={videoRef}
+                      source={{ uri: selectedMedia }}
+                      style={[
+                        styles.preview,
+                        aspectRatio !== 'original' && {
+                          aspectRatio: getAspectRatioValue(aspectRatio),
+                        },
+                      ]}
+                      resizeMode={ResizeMode.COVER}
+                      isLooping={false}
+                      onPlaybackStatusUpdate={handleVideoStatusUpdate}
+                      useNativeControls={false}
+                    />
+                    <Pressable
+                      onPress={handlePlayPause}
+                      style={styles.videoControlsOverlay}
+                    >
+                      <View style={styles.playPauseButton}>
+                        {isPlaying ? (
+                          <Pause size={40} color={COLORS.white} />
+                        ) : (
+                          <Play size={40} color={COLORS.white} />
+                        )}
+                      </View>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Image
+                    source={{ uri: selectedMedia }}
+                    style={[
+                      styles.preview,
+                      aspectRatio !== 'original' && {
+                        aspectRatio: getAspectRatioValue(aspectRatio),
+                      },
+                    ]}
+                    contentFit="cover"
+                  />
                 )}
               </View>
               <Pressable
@@ -365,14 +416,22 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 300,
   },
-  videoIndicator: {
+  videoControlsOverlay: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -16 }, { translateY: -16 }],
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 32,
-    padding: 12,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playPauseButton: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 40,
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   changeButton: {
     paddingVertical: 12,

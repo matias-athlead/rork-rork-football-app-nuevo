@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag } from 'lucide-react-native';
@@ -17,6 +17,37 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState(MOCK_POSTS);
+  const panX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx < 0) {
+          panX.setValue(gestureState.dx);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -80) {
+          Animated.timing(panX, {
+            toValue: -400,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            panX.setValue(0);
+            router.push('/messages');
+          });
+        } else {
+          Animated.spring(panX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   const handleLike = (postId: string) => {
     if (Platform.OS !== 'web') {
@@ -136,6 +167,10 @@ export default function HomeScreen() {
     </View>
   );
 
+  const filteredPosts = activeTab === 'following' 
+    ? posts.filter(p => Math.random() > 0.5)
+    : posts;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.topHeader, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
@@ -169,19 +204,33 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-      />
+      <Animated.View
+        style={[
+          styles.feedContainer,
+          {
+            transform: [{ translateX: panX }],
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <FlatList
+          data={filteredPosts}
+          renderItem={renderPost}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          scrollEnabled={true}
+        />
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  feedContainer: {
     flex: 1,
   },
   topHeader: {
