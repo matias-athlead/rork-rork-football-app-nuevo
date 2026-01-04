@@ -1,29 +1,285 @@
-// template
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import { Heart, MessageCircle, Share2, UserPlus, Bell, Send } from 'lucide-react-native';
+import * as Sharing from 'expo-sharing';
+import { useTheme } from '@/src/hooks/useTheme';
+import { MOCK_POSTS } from '@/src/services/mockData';
+import { Post } from '@/src/types/Post';
+import { COLORS } from '@/src/utils/theme';
+import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 
-export default function TabOneScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Your Rork app will be here</Text>
-      <Text style={styles.text}>Please wait until we finish building it</Text>
+export default function HomeScreen() {
+  const { theme } = useTheme();
+  const router = useRouter();
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
+  const [posts, setPosts] = useState(MOCK_POSTS);
+
+  const handleLike = (postId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setPosts(posts.map(p => 
+      p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p
+    ));
+  };
+
+  const handleComment = (postId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.push(`/post-comments/${postId}` as any);
+  };
+
+  const handleShare = async (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    try {
+      if (Platform.OS === 'web') {
+        if (navigator.share) {
+          await navigator.share({
+            title: `${post.username}'s post`,
+            text: post.caption,
+            url: post.videoUrl
+          });
+        } else {
+          await navigator.clipboard.writeText(post.videoUrl);
+          alert('Link copied to clipboard!');
+        }
+      } else {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(post.videoUrl, {
+            dialogTitle: `Share ${post.username}'s post`
+          });
+        }
+      }
+    } catch (error) {
+      console.log('Share error:', error);
+    }
+  };
+
+  const renderPost = ({ item }: { item: Post }) => (
+    <View style={[styles.postCard, { backgroundColor: theme.card }]}>
+      <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeader}>
+        <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
+        <View style={styles.postHeaderInfo}>
+          <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
+          <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole.toUpperCase()}</Text>
+        </View>
+        <Pressable style={styles.followButton}>
+          <UserPlus size={16} color={COLORS.white} />
+        </Pressable>
+      </Pressable>
+
+      <Image
+        source={{ uri: item.thumbnailUrl }}
+        style={styles.postImage}
+        contentFit="cover"
+      />
+
+      <View style={styles.postActions}>
+        <View style={styles.leftActions}>
+          <Pressable onPress={() => handleLike(item.id)} style={styles.actionBtn}>
+            <Heart
+              size={26}
+              color={item.isLiked ? COLORS.error : theme.text}
+              fill={item.isLiked ? COLORS.error : 'transparent'}
+            />
+          </Pressable>
+          <Pressable onPress={() => handleComment(item.id)} style={styles.actionBtn}>
+            <MessageCircle size={26} color={theme.text} />
+          </Pressable>
+          <Pressable onPress={() => handleShare(item)} style={styles.actionBtn}>
+            <Share2 size={26} color={theme.text} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.postInfo}>
+        <Text style={[styles.likesCount, { color: theme.text }]}>{item.likes} {t('home.likes')}</Text>
+        <Text style={[styles.postCaption, { color: theme.text }]} numberOfLines={2}>
+          <Text style={styles.captionUsername}>{item.username}</Text> {item.caption}
+        </Text>
+        <Text style={styles.postHashtags}>{item.hashtags.join(' ')}</Text>
+        {item.comments > 0 && (
+          <Text style={[styles.viewComments, { color: theme.textSecondary }]}>
+            View all {item.comments} {t('home.comments')}
+          </Text>
+        )}
+      </View>
     </View>
+  );
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.topHeader, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+        <Text style={[styles.logo, { color: theme.text }]}>Athlead</Text>
+        <View style={styles.headerIcons}>
+          <Pressable onPress={() => router.push('/messages')} style={styles.headerIcon}>
+            <Send size={24} color={theme.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/notifications' as any)} style={styles.headerIcon}>
+            <Bell size={24} color={theme.text} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={[styles.tabHeader, { backgroundColor: theme.background }]}>
+        <Pressable
+          onPress={() => setActiveTab('following')}
+          style={[styles.tab, activeTab === 'following' && styles.tabActive]}
+        >
+          <Text style={[styles.tabText, { color: activeTab === 'following' ? theme.text : theme.textSecondary }]}>
+            Following
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab('forYou')}
+          style={[styles.tab, activeTab === 'forYou' && styles.tabActive]}
+        >
+          <Text style={[styles.tabText, { color: activeTab === 'forYou' ? theme.text : theme.textSecondary }]}>
+            For You
+          </Text>
+        </Pressable>
+      </View>
+
+      <FlatList
+        data={posts}
+        renderItem={renderPost}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "bold",
+  topHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
-  text: {
+  logo: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  headerIcon: {
+    padding: 4,
+  },
+  tabHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 24,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
     fontSize: 16,
-    textAlign: "center",
-    paddingHorizontal: 20,
+    fontWeight: '700',
+  },
+  listContent: {
+    paddingBottom: 20,
+  },
+  postCard: {
+    marginBottom: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginHorizontal: 12,
+  },
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  postHeaderInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  postUsername: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  postRole: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  followButton: {
+    backgroundColor: COLORS.skyBlue,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  postImage: {
+    width: '100%',
+    height: 400,
+  },
+  postActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  leftActions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  actionBtn: {
+    padding: 4,
+  },
+  postInfo: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  likesCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  postCaption: {
+    fontSize: 14,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  captionUsername: {
+    fontWeight: '600',
+  },
+  postHashtags: {
+    fontSize: 14,
+    color: COLORS.skyBlue,
+    marginTop: 4,
+  },
+  viewComments: {
+    fontSize: 13,
+    marginTop: 6,
   },
 });
