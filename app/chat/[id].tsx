@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert, FlatList as RNFlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity } from 'lucide-react-native';
+import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity, Calendar, ChevronRight } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -10,6 +10,7 @@ import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { Calendar as RNCalendar } from 'react-native-calendars';
 
 interface Note {
   id: string;
@@ -55,6 +56,10 @@ export default function ChatScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [photoType, setPhotoType] = useState<'permanent' | 'ephemeral'>('permanent');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showCalendarView, setShowCalendarView] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const chatUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
   const NOTES_KEY = `@chat_notes_${id}`;
@@ -320,8 +325,16 @@ export default function ChatScreen() {
         {showNotes ? (
           <ScrollView style={styles.notesContainer} showsVerticalScrollIndicator={false}>
             <View style={styles.notesHeader}>
-              <Text style={[styles.notesTitle, { color: theme.text }]}>Private Notes</Text>
-              <Text style={[styles.notesSubtitle, { color: theme.textSecondary }]}>Only visible to you</Text>
+              <View>
+                <Text style={[styles.notesTitle, { color: theme.text }]}>Private Notes & Tasks</Text>
+                <Text style={[styles.notesSubtitle, { color: theme.textSecondary }]}>Only visible to you</Text>
+              </View>
+              <Pressable
+                onPress={() => setShowCalendarView(!showCalendarView)}
+                style={[styles.calendarToggle, { backgroundColor: showCalendarView ? COLORS.skyBlue : theme.card }]}
+              >
+                <Calendar size={20} color={showCalendarView ? COLORS.white : theme.text} />
+              </Pressable>
             </View>
 
             <View style={[styles.addNoteSection, { backgroundColor: theme.inputBackground }]}>
@@ -341,6 +354,68 @@ export default function ChatScreen() {
                 <Plus size={20} color={COLORS.white} />
               </Pressable>
             </View>
+
+            {showCalendarView && (
+              <View style={[styles.calendarContainer, { backgroundColor: theme.card }]}>
+                <RNCalendar
+                  onDayPress={(day) => {
+                    setSelectedDate(day.dateString);
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                  }}
+                  markedDates={{
+                    ...tasks.reduce((acc, task) => {
+                      acc[task.date] = { marked: true, dotColor: COLORS.skyBlue };
+                      return acc;
+                    }, {} as any),
+                    ...(selectedDate ? { [selectedDate]: { selected: true, selectedColor: COLORS.skyBlue } } : {}),
+                  }}
+                  theme={{
+                    backgroundColor: theme.card,
+                    calendarBackground: theme.card,
+                    textSectionTitleColor: theme.text,
+                    selectedDayBackgroundColor: COLORS.skyBlue,
+                    selectedDayTextColor: COLORS.white,
+                    todayTextColor: COLORS.primary,
+                    dayTextColor: theme.text,
+                    textDisabledColor: theme.textSecondary,
+                    monthTextColor: theme.text,
+                    arrowColor: COLORS.skyBlue,
+                  }}
+                />
+                {selectedDate && (
+                  <View style={styles.selectedDateTasks}>
+                    <Text style={[styles.selectedDateTitle, { color: theme.text }]}>
+                      Tasks for {selectedDate}
+                    </Text>
+                    {tasks.filter(t => t.date === selectedDate).map(task => (
+                      <View key={task.id} style={[styles.taskCard, { backgroundColor: theme.inputBackground }]}>
+                        <Pressable onPress={() => handleToggleTask(task.id)} style={styles.taskCheckbox}>
+                          <View style={[styles.checkbox, { borderColor: theme.border, backgroundColor: task.completed ? COLORS.skyBlue : 'transparent' }]}>
+                            {task.completed && <Check size={14} color={COLORS.white} />}
+                          </View>
+                        </Pressable>
+                        <View style={styles.taskContent}>
+                          <Text style={[styles.taskText, { color: theme.text, textDecorationLine: task.completed ? 'line-through' : 'none' }]}>
+                            {task.text}
+                          </Text>
+                          <Text style={[styles.taskDateTime, { color: theme.textSecondary }]}>
+                            {task.time}
+                          </Text>
+                        </View>
+                        <Pressable onPress={() => handleDeleteTask(task.id)}>
+                          <X size={18} color={theme.textSecondary} />
+                        </Pressable>
+                      </View>
+                    ))}
+                    {tasks.filter(t => t.date === selectedDate).length === 0 && (
+                      <Text style={[styles.emptyTasksText, { color: theme.textSecondary }]}>No tasks for this date</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
 
             <View style={styles.notesList}>
               {notes.map(note => (
@@ -504,24 +579,96 @@ export default function ChatScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>Date</Text>
-                <TextInput
-                  style={[styles.modalInput, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={theme.textSecondary}
-                  value={newTaskDate}
-                  onChangeText={setNewTaskDate}
-                />
+                <Pressable
+                  onPress={() => setShowDatePicker(!showDatePicker)}
+                  style={[styles.datePickerButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                >
+                  <Calendar size={20} color={theme.textSecondary} />
+                  <Text style={[styles.datePickerText, { color: newTaskDate ? theme.text : theme.textSecondary }]}>
+                    {newTaskDate || 'Select date'}
+                  </Text>
+                  <ChevronRight size={20} color={theme.textSecondary} />
+                </Pressable>
+                {showDatePicker && (
+                  <View style={[styles.inlineCalendar, { backgroundColor: theme.inputBackground }]}>
+                    <RNCalendar
+                      onDayPress={(day) => {
+                        setNewTaskDate(day.dateString);
+                        setShowDatePicker(false);
+                        if (Platform.OS !== 'web') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
+                      }}
+                      markedDates={{
+                        [newTaskDate]: { selected: true, selectedColor: COLORS.skyBlue },
+                      }}
+                      theme={{
+                        backgroundColor: theme.inputBackground,
+                        calendarBackground: theme.inputBackground,
+                        textSectionTitleColor: theme.text,
+                        selectedDayBackgroundColor: COLORS.skyBlue,
+                        selectedDayTextColor: COLORS.white,
+                        todayTextColor: COLORS.primary,
+                        dayTextColor: theme.text,
+                        textDisabledColor: theme.textSecondary,
+                        monthTextColor: theme.text,
+                        arrowColor: COLORS.skyBlue,
+                      }}
+                    />
+                  </View>
+                )}
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>Time</Text>
-                <TextInput
-                  style={[styles.modalInput, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
-                  placeholder="HH:MM"
-                  placeholderTextColor={theme.textSecondary}
-                  value={newTaskTime}
-                  onChangeText={setNewTaskTime}
-                />
+                <Pressable
+                  onPress={() => setShowTimePicker(!showTimePicker)}
+                  style={[styles.datePickerButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                >
+                  <Clock size={20} color={theme.textSecondary} />
+                  <Text style={[styles.datePickerText, { color: newTaskTime ? theme.text : theme.textSecondary }]}>
+                    {newTaskTime || 'Select time'}
+                  </Text>
+                  <ChevronRight size={20} color={theme.textSecondary} />
+                </Pressable>
+                {showTimePicker && (
+                  <View style={[styles.timePickerContainer, { backgroundColor: theme.inputBackground }]}>
+                    <View style={styles.timePickerRow}>
+                      {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00'].map(time => (
+                        <Pressable
+                          key={time}
+                          onPress={() => {
+                            setNewTaskTime(time);
+                            setShowTimePicker(false);
+                            if (Platform.OS !== 'web') {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }
+                          }}
+                          style={[styles.timeOption, { backgroundColor: theme.card }]}
+                        >
+                          <Text style={[styles.timeOptionText, { color: theme.text }]}>{time}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.timePickerRow}>
+                      {['15:00', '16:00', '17:00', '18:00', '19:00', '20:00'].map(time => (
+                        <Pressable
+                          key={time}
+                          onPress={() => {
+                            setNewTaskTime(time);
+                            setShowTimePicker(false);
+                            if (Platform.OS !== 'web') {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }
+                          }}
+                          style={[styles.timeOption, { backgroundColor: theme.card }]}
+                        >
+                          <Text style={[styles.timeOptionText, { color: theme.text }]}>{time}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
 
               <Pressable
@@ -790,7 +937,69 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   notesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 16,
+  },
+  calendarToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarContainer: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+  },
+  selectedDateTasks: {
+    marginTop: 16,
+    gap: 12,
+  },
+  selectedDateTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 15,
+  },
+  inlineCalendar: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  timePickerContainer: {
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeOption: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  timeOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   notesTitle: {
     fontSize: 20,

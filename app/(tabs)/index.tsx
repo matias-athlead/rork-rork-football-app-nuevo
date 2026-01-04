@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag } from 'lucide-react-native';
@@ -18,6 +18,8 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState(MOCK_POSTS);
   const panX = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const screenWidth = Dimensions.get('window').width;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -33,8 +35,9 @@ export default function HomeScreen() {
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dx < 0) {
-          const dampedValue = gestureState.dx * 0.7;
-          panX.setValue(dampedValue);
+          const progress = Math.min(Math.abs(gestureState.dx) / 100, 1);
+          panX.setValue(gestureState.dx);
+          opacity.setValue(progress * 0.3);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -45,21 +48,36 @@ export default function HomeScreen() {
           if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           }
-          Animated.timing(panX, {
-            toValue: -500,
-            duration: 250,
-            useNativeDriver: true,
-          }).start(() => {
+          Animated.parallel([
+            Animated.timing(panX, {
+              toValue: -screenWidth,
+              duration: 280,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 1,
+              duration: 280,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
             panX.setValue(0);
+            opacity.setValue(0);
             router.push('/messages');
           });
         } else {
-          Animated.spring(panX, {
-            toValue: 0,
-            tension: 65,
-            friction: 8,
-            useNativeDriver: true,
-          }).start();
+          Animated.parallel([
+            Animated.spring(panX, {
+              toValue: 0,
+              tension: 65,
+              friction: 8,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
         }
       },
     })
@@ -220,24 +238,42 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <Animated.View
-        style={[
-          styles.feedContainer,
-          {
-            transform: [{ translateX: panX }],
-          },
-        ]}
-        {...(activeTab === 'forYou' ? panResponder.panHandlers : {})}
-      >
-        <FlatList
+      <View style={styles.feedWrapper}>
+        {activeTab === 'forYou' && (
+          <Animated.View
+            style={[
+              styles.swipeIndicator,
+              {
+                opacity,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View style={[styles.swipeIndicatorContent, { backgroundColor: theme.card }]}>
+              <Send size={24} color={COLORS.skyBlue} />
+              <Text style={[styles.swipeIndicatorText, { color: theme.text }]}>Messages</Text>
+            </View>
+          </Animated.View>
+        )}
+        <Animated.View
+          style={[
+            styles.feedContainer,
+            {
+              transform: [{ translateX: panX }],
+            },
+          ]}
+          {...(activeTab === 'forYou' ? panResponder.panHandlers : {})}
+        >
+          <FlatList
           data={filteredPosts}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           scrollEnabled={true}
-        />
-      </Animated.View>
+          />
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -246,8 +282,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  feedWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
   feedContainer: {
     flex: 1,
+  },
+  swipeIndicator: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  swipeIndicatorContent: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  swipeIndicatorText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   topHeader: {
     flexDirection: 'row',
