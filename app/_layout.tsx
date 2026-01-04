@@ -5,6 +5,8 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider } from "@/src/hooks/useAuth";
 import { ThemeProvider } from "@/src/hooks/useTheme";
+import { PrivacySettingsProvider } from "@/src/hooks/usePrivacySettings";
+import { BlockedUsersProvider } from "@/src/hooks/useBlockedUsers";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,6 +33,10 @@ function RootLayoutNav() {
       <Stack.Screen name="audio-call/[id]" options={{ headerShown: false, presentation: "fullScreenModal" }} />
       <Stack.Screen name="video-call/[id]" options={{ headerShown: false, presentation: "fullScreenModal" }} />
       <Stack.Screen name="radar-stats" options={{ headerShown: false }} />
+      <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="privacy-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
+      <Stack.Screen name="help-support" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -45,7 +51,11 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
           <AuthProvider>
-            <RootLayoutNav />
+            <PrivacySettingsProvider>
+              <BlockedUsersProvider>
+                <RootLayoutNav />
+              </BlockedUsersProvider>
+            </PrivacySettingsProvider>
           </AuthProvider>
         </ThemeProvider>
       </GestureHandlerRootView>

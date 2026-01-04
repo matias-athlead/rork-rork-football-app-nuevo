@@ -1,51 +1,31 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Image, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, UserX } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
-
-interface BlockedUser {
-  id: string;
-  username: string;
-  fullName: string;
-  profilePhoto: string;
-  blockedAt: string;
-}
-
-const mockBlockedUsers: BlockedUser[] = [
-  {
-    id: '1',
-    username: 'user123',
-    fullName: 'John Doe',
-    profilePhoto: 'https://i.pravatar.cc/150?img=1',
-    blockedAt: '2024-01-15',
-  },
-  {
-    id: '2',
-    username: 'spammer99',
-    fullName: 'Jane Smith',
-    profilePhoto: 'https://i.pravatar.cc/150?img=2',
-    blockedAt: '2024-01-10',
-  },
-];
+import { useBlockedUsers } from '@/src/hooks/useBlockedUsers';
 
 export default function BlockedUsersScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>(mockBlockedUsers);
+  const { blockedUsers, unblockUser } = useBlockedUsers();
 
-  const handleUnblock = (user: BlockedUser) => {
+  const handleUnblock = (userId: string, username: string) => {
     Alert.alert(
       'Unblock User',
-      `Are you sure you want to unblock ${user.username}?`,
+      `Are you sure you want to unblock ${username}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Unblock',
           style: 'default',
-          onPress: () => {
-            setBlockedUsers(blockedUsers.filter(u => u.id !== user.id));
-            Alert.alert('Success', `${user.username} has been unblocked`);
+          onPress: async () => {
+            try {
+              await unblockUser(userId);
+              Alert.alert('Success', `${username} has been unblocked`);
+            } catch {
+              Alert.alert('Error', 'Failed to unblock user');
+            }
           },
         },
       ]
@@ -99,7 +79,7 @@ export default function BlockedUsersScreen() {
                   </View>
                 </View>
                 <Pressable
-                  onPress={() => handleUnblock(user)}
+                  onPress={() => handleUnblock(user.id, user.username)}
                   style={[styles.unblockButton, { borderColor: theme.border }]}
                 >
                   <Text style={[styles.unblockText, { color: theme.text }]}>

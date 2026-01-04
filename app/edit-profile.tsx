@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Camera } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -10,11 +11,73 @@ import { COLORS } from '@/src/utils/theme';
 export default function EditProfileScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [username, setUsername] = useState(user?.username || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [city, setCity] = useState(user?.city || '');
+  const [currentClub, setCurrentClub] = useState(user?.role === 'player' ? (user.currentClub || '') : '');
+  const [profilePhoto, setProfilePhoto] = useState(user?.profilePhoto || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handlePickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photos to change your profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Failed to pick image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+
+    if (!fullName.trim() || !username.trim()) {
+      Alert.alert('Validation Error', 'Name and username are required');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updatedUser = {
+        ...user,
+        fullName: fullName.trim(),
+        username: username.trim(),
+        bio: bio.trim(),
+        city: city.trim(),
+        profilePhoto,
+      };
+
+      if (user.role === 'player') {
+        (updatedUser as any).currentClub = currentClub.trim();
+      }
+
+      await updateUser(updatedUser);
+      Alert.alert('Success', 'Profile updated successfully!');
+      router.back();
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      Alert.alert('Error', 'Failed to update profile');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -23,22 +86,24 @@ export default function EditProfileScreen() {
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
         <Text style={[styles.title, { color: theme.text }]}>Edit Profile</Text>
-        <Pressable onPress={() => {
-          Alert.alert('Success', 'Profile updated!');
-          router.back();
-        }}>
-          <Text style={[styles.saveText, { color: COLORS.skyBlue }]}>Save</Text>
+        <Pressable onPress={handleSave} disabled={isSaving}>
+          <Text style={[styles.saveText, { color: isSaving ? theme.textSecondary : COLORS.skyBlue }]}>
+            {isSaving ? 'Saving...' : 'Save'}
+          </Text>
         </Pressable>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.photoSection}>
           <Image 
-            source={{ uri: user?.profilePhoto }} 
+            source={{ uri: profilePhoto }} 
             style={styles.profilePhoto}
             contentFit="cover"
           />
-          <Pressable style={[styles.photoButton, { backgroundColor: theme.card }]}>
+          <Pressable 
+            style={[styles.photoButton, { backgroundColor: theme.card }]}
+            onPress={handlePickImage}
+          >
             <Camera size={20} color={COLORS.skyBlue} />
             <Text style={[styles.photoButtonText, { color: COLORS.skyBlue }]}>Change Photo</Text>
           </Pressable>
@@ -99,7 +164,8 @@ export default function EditProfileScreen() {
                 style={[styles.textInput, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                 placeholder="Enter your club"
                 placeholderTextColor={theme.textSecondary}
-                value={'currentClub' in user ? user.currentClub : ''}
+                value={currentClub}
+                onChangeText={setCurrentClub}
               />
             </View>
           )}

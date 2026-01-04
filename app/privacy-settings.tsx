@@ -1,30 +1,45 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
+import { usePrivacySettings } from '@/src/hooks/usePrivacySettings';
 
 export default function PrivacySettingsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user, updateUser } = useAuth();
-  const [isPrivate, setIsPrivate] = useState(user?.isPrivate || false);
-  const [showOnlineStatus, setShowOnlineStatus] = useState(true);
-  const [showReadReceipts, setShowReadReceipts] = useState(true);
-  const [allowTagging, setAllowTagging] = useState(true);
-  const [showStats, setShowStats] = useState(true);
+  const { settings, updateSetting } = usePrivacySettings();
+
+  useEffect(() => {
+    if (user && settings.isPrivate !== user.isPrivate) {
+      updateUser({ ...user, isPrivate: settings.isPrivate });
+    }
+  }, [settings.isPrivate, user, updateUser]);
 
   const handlePrivacyToggle = async (value: boolean) => {
-    setIsPrivate(value);
-    if (user) {
-      await updateUser({ ...user, isPrivate: value });
+    try {
+      await updateSetting('isPrivate', value);
+      if (user) {
+        await updateUser({ ...user, isPrivate: value });
+      }
       Alert.alert(
         'Account Privacy Updated',
         value
           ? 'Your account is now private. Only approved followers can see your posts.'
           : 'Your account is now public. Anyone can see your posts.'
       );
+    } catch {
+      Alert.alert('Error', 'Failed to update privacy setting');
+    }
+  };
+
+  const handleToggle = async (key: keyof typeof settings, value: boolean) => {
+    try {
+      await updateSetting(key, value);
+    } catch {
+      Alert.alert('Error', 'Failed to update setting');
     }
   };
 
@@ -35,7 +50,7 @@ export default function PrivacySettingsScreen() {
         {
           label: 'Private Account',
           description: 'Only approved followers can see your posts',
-          value: isPrivate,
+          value: settings.isPrivate,
           onToggle: handlePrivacyToggle,
         },
       ],
@@ -46,14 +61,14 @@ export default function PrivacySettingsScreen() {
         {
           label: 'Show Online Status',
           description: 'Let others see when you\'re active',
-          value: showOnlineStatus,
-          onToggle: setShowOnlineStatus,
+          value: settings.showOnlineStatus,
+          onToggle: (value: boolean) => handleToggle('showOnlineStatus', value),
         },
         {
           label: 'Read Receipts',
           description: 'Let others see when you read their messages',
-          value: showReadReceipts,
-          onToggle: setShowReadReceipts,
+          value: settings.showReadReceipts,
+          onToggle: (value: boolean) => handleToggle('showReadReceipts', value),
         },
       ],
     },
@@ -63,14 +78,14 @@ export default function PrivacySettingsScreen() {
         {
           label: 'Allow Tagging',
           description: 'Let others tag you in posts',
-          value: allowTagging,
-          onToggle: setAllowTagging,
+          value: settings.allowTagging,
+          onToggle: (value: boolean) => handleToggle('allowTagging', value),
         },
         {
           label: 'Show Stats',
           description: 'Display your stats on your profile',
-          value: showStats,
-          onToggle: setShowStats,
+          value: settings.showStats,
+          onToggle: (value: boolean) => handleToggle('showStats', value),
         },
       ],
     },
