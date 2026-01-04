@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, ChevronRight, Moon, Sun, Globe, Bell, Lock, Shield, HelpCircle, LogOut, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
+import { getCurrentLanguage } from '@/src/i18n';
+import LanguageSelector from '@/src/components/LanguageSelector';
 
 export default function SettingsScreen() {
   const { theme, themeMode, setThemeMode, isDark } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -54,6 +58,15 @@ export default function SettingsScreen() {
     return themeMode.charAt(0).toUpperCase() + themeMode.slice(1);
   };
 
+  const getLanguageLabel = () => {
+    return currentLanguage === 'es' ? 'Español' : 'English';
+  };
+
+  const handleLanguageModalClose = () => {
+    setLanguageModalVisible(false);
+    setCurrentLanguage(getCurrentLanguage());
+  };
+
   const sections = [
     {
       title: 'Appearance',
@@ -72,13 +85,13 @@ export default function SettingsScreen() {
         {
           icon: <Globe size={22} color={theme.text} />,
           label: 'Language',
-          value: 'English',
-          onPress: () => Alert.alert('Language', 'Language selection coming soon'),
+          value: getLanguageLabel(),
+          onPress: () => setLanguageModalVisible(true),
         },
         {
           icon: <Bell size={22} color={theme.text} />,
           label: 'Notifications',
-          onPress: () => Alert.alert('Notifications', 'Push notification settings'),
+          onPress: () => router.push('/notification-settings'),
         },
       ],
     },
@@ -89,12 +102,12 @@ export default function SettingsScreen() {
           icon: <Lock size={22} color={theme.text} />,
           label: 'Privacy',
           value: user?.isPrivate ? 'Private' : 'Public',
-          onPress: () => Alert.alert('Privacy', 'Account privacy settings'),
+          onPress: () => router.push('/privacy-settings'),
         },
         {
           icon: <Shield size={22} color={theme.text} />,
           label: 'Blocked Users',
-          onPress: () => Alert.alert('Blocked Users', 'Manage blocked accounts'),
+          onPress: () => router.push('/blocked-users'),
         },
       ],
     },
@@ -104,7 +117,7 @@ export default function SettingsScreen() {
         {
           icon: <HelpCircle size={22} color={theme.text} />,
           label: 'Help & Support',
-          onPress: () => Alert.alert('Help', 'Contact support@athlead.com'),
+          onPress: () => router.push('/help-support'),
         },
       ],
     },
@@ -179,6 +192,11 @@ export default function SettingsScreen() {
           Version 1.0.0 (Build 1)
         </Text>
       </ScrollView>
+
+      <LanguageSelector
+        visible={languageModalVisible}
+        onClose={handleLanguageModalClose}
+      />
     </SafeAreaView>
   );
 }
