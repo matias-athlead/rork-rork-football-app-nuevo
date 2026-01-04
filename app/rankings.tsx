@@ -2,17 +2,20 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Trophy, Medal, Award, Users, Target, Shield, TrendingUp } from 'lucide-react-native';
+import { ArrowLeft, Trophy, Medal, Award, Users, Target, Shield, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_USERS, MOCK_POSTS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
 
 type RankingTab = 'scorers' | 'assisters' | 'plays' | 'teams' | 'coaches';
+type TimeFilter = 'week' | 'month' | 'season' | 'all';
 
 export default function RankingsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<RankingTab>('scorers');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
+  const [showFilters, setShowFilters] = useState(false);
 
   const topScorers = MOCK_USERS.slice(0, 15)
     .filter(u => u.role === 'player')
@@ -291,6 +294,13 @@ export default function RankingsScreen() {
     }
   };
 
+  const timeFilterLabels: Record<TimeFilter, string> = {
+    week: 'Semana',
+    month: 'Mes',
+    season: 'Temporada',
+    all: 'Histórico'
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.background }]}>
@@ -298,10 +308,39 @@ export default function RankingsScreen() {
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
         <Text style={[styles.title, { color: theme.text }]}>Rankings</Text>
-        <Pressable style={styles.trendButton}>
-          <TrendingUp size={20} color={theme.text} />
+        <Pressable onPress={() => setShowFilters(!showFilters)} style={styles.filterButton}>
+          <Calendar size={20} color={theme.text} />
         </Pressable>
       </View>
+
+      {showFilters && (
+        <View style={[styles.filterContainer, { backgroundColor: theme.card }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+            {(['week', 'month', 'season', 'all'] as TimeFilter[]).map((filter) => (
+              <Pressable
+                key={filter}
+                onPress={() => setTimeFilter(filter)}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: timeFilter === filter ? COLORS.primary : theme.background,
+                    borderColor: timeFilter === filter ? COLORS.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    { color: timeFilter === filter ? COLORS.white : theme.textSecondary },
+                  ]}
+                >
+                  {timeFilterLabels[filter]}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       <View style={styles.tabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
@@ -356,8 +395,27 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
   },
-  trendButton: {
+  filterButton: {
     padding: 4,
+  },
+  filterContainer: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  filterContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   title: {
     fontSize: 20,
