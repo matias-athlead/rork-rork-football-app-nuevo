@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Trophy, Medal, Award, Users, Target, Shield, Calendar } from 'lucide-react-native';
+import { Trophy, Medal, Award, Users, Target, Shield, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_USERS, MOCK_POSTS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
@@ -304,9 +304,6 @@ export default function RankingsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.background }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color={theme.text} />
-        </Pressable>
         <Text style={[styles.title, { color: theme.text }]}>Rankings</Text>
         <Pressable onPress={() => setShowFilters(!showFilters)} style={styles.filterButton}>
           <Calendar size={20} color={theme.text} />
@@ -391,9 +388,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-  },
-  backButton: {
-    padding: 4,
   },
   filterButton: {
     padding: 4,

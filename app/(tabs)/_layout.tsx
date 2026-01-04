@@ -1,5 +1,5 @@
 import { Tabs, Redirect } from "expo-router";
-import { Home, Search, PlusSquare, User } from "lucide-react-native";
+import { Home, Search, PlusSquare, BarChart3, User } from "lucide-react-native";
 import React from "react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useTheme } from "@/src/hooks/useTheme";
@@ -55,6 +55,13 @@ export default function TabLayout() {
         options={{
           title: "Create",
           tabBarIcon: ({ color, size }) => <PlusSquare color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="rankings"
+        options={{
+          title: "Rankings",
+          tabBarIcon: ({ color, size }) => <BarChart3 color={color} size={size} />,
         }}
       />
       <Tabs.Screen
