@@ -19,21 +19,36 @@ export default function PremiumScreen() {
 
   const handleSubscribe = async () => {
     console.log('[Premium] Demo mode - granting premium access');
-    if (!user) return;
+    if (!user) {
+      console.log('[Premium] No user found');
+      return;
+    }
 
     try {
+      console.log('[Premium] Current user isPremium:', user.isPremium);
+      
       const updatedUser = {
         ...user,
         isPremium: true,
       };
 
+      console.log('[Premium] Updating user with isPremium: true');
       await updateUser(updatedUser);
-      Alert.alert('Success', '¡Premium activado! All premium features are now enabled for demo.', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      
+      console.log('[Premium] User updated successfully');
+      Alert.alert(
+        '¡Éxito!', 
+        '¡Premium activado! Todas las funciones premium están ahora disponibles para la demo.', 
+        [
+          { text: 'OK', onPress: () => {
+            console.log('[Premium] Navigating back');
+            router.back();
+          }}
+        ]
+      );
     } catch (error) {
       console.error('[Premium] Failed to grant premium:', error);
-      Alert.alert('Error', 'Failed to activate premium');
+      Alert.alert('Error', 'No se pudo activar premium. Por favor, intenta de nuevo.');
     }
   };
 
