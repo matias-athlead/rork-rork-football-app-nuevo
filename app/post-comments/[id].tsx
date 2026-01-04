@@ -111,7 +111,7 @@ export default function PostCommentsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         <Text style={[styles.title, { color: theme.text }]}>Comments</Text>
-        <Pressable onPress={() => router.back()} style={styles.closeButton}>
+        <Pressable onPress={() => router.canGoBack() ? router.back() : router.push('/(tabs)')} style={styles.closeButton}>
           <X size={24} color={theme.text} />
         </Pressable>
       </View>

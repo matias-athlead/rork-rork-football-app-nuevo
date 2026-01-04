@@ -74,7 +74,11 @@ export default function EditProfileScreen() {
       await AsyncStorage.setItem('@user_profile', JSON.stringify(updatedUser));
       
       Alert.alert('Success', 'Profile updated successfully!');
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)');
+      }
     } catch (error) {
       console.error('Failed to update profile:', error);
       Alert.alert('Error', 'Failed to update profile');
@@ -86,7 +90,13 @@ export default function EditProfileScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.background }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Pressable onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.push('/(tabs)');
+          }
+        }} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
         <Text style={[styles.title, { color: theme.text }]}>Edit Profile</Text>
