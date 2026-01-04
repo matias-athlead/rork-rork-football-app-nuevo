@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, UserRole } from '@/src/types/User';
 import { MOCK_USERS } from './mockData';
 import { googleAuthService } from './googleAuthService';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { Platform } from 'react-native';
 
 const AUTH_TOKEN_KEY = '@athlead_auth_token';
 const USER_DATA_KEY = '@athlead_user_data';
@@ -51,6 +53,92 @@ export const authService = {
     await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
 
     return { user, token };
+  },
+
+  async loginWithApple(): Promise<AuthResponse> {
+    console.log('[Auth] Starting Apple login...');
+    
+    if (Platform.OS !== 'ios') {
+      throw new Error('Apple Sign In is only available on iOS');
+    }
+
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      console.log('[Auth] Apple credential received:', credential.user);
+
+      const email = credential.email || `${credential.user}@privaterelay.appleid.com`;
+      const fullName = credential.fullName
+        ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
+        : 'Apple User';
+
+      let user = MOCK_USERS.find(u => u.email === email);
+
+      if (!user) {
+        console.log('[Auth] Creating new user from Apple account');
+        const newUser: User = {
+          id: `apple_user_${Date.now()}`,
+          email,
+          username: email.split('@')[0],
+          fullName,
+          role: 'player',
+          profilePhoto: 'https://i.pravatar.cc/300?img=50',
+          coverPhoto: 'https://images.unsplash.com/photo-1540747913346-19e32778a8e?w=800&h=300&fit=crop',
+          bio: '',
+          followers: 0,
+          following: 0,
+          isPrivate: false,
+          isPremium: false,
+          createdAt: new Date().toISOString(),
+          birthdate: '1990-01-01',
+          city: '',
+          federation: 'RFEF',
+          age: 25,
+          currentClub: '',
+          positions: [],
+          stats: {
+            speed: 0,
+            power: 0,
+            sprints: 0,
+            offBallRuns: 0,
+            dribbles: 0,
+            passAccuracy: 0,
+            goals: 0,
+            assists: 0,
+            minutes: 0,
+            matchesPlayed: 0,
+            shotsOnTarget: 0,
+          },
+          radarStats: {
+            speed: 0,
+            passPercentage: 0,
+            goalPercentage: 0,
+            matchCompletionPercentage: 0,
+            dribbles: 0,
+          },
+        };
+        user = newUser;
+      }
+
+      const token = generateMockToken();
+
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+
+      console.log('[Auth] Apple login successful');
+      return { user, token };
+    } catch (error: any) {
+      console.error('[Auth] Apple login failed:', error);
+      if (error.code === 'ERR_CANCELED') {
+        throw new Error('Apple Sign In was canceled');
+      }
+      throw error;
+    }
   },
 
   async loginWithGoogle(): Promise<AuthResponse> {

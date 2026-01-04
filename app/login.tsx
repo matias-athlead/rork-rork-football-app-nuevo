@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, ArrowLeft } from 'lucide-react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { RoleSelector } from '@/src/components/RoleSelector';
 import { UserRole } from '@/src/types/User';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -12,11 +13,22 @@ import { COLORS } from '@/src/utils/theme';
 export default function LoginScreen() {
   const router = useRouter();
   const { theme } = useTheme();
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, loginWithApple } = useAuth();
   const [role, setRole] = useState<UserRole>('player');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAppleSignInAvailable, setIsAppleSignInAvailable] = useState(false);
+
+  useEffect(() => {
+    const checkAppleSignIn = async () => {
+      if (Platform.OS === 'ios') {
+        const isAvailable = await AppleAuthentication.isAvailableAsync();
+        setIsAppleSignInAvailable(isAvailable);
+      }
+    };
+    checkAppleSignIn();
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -42,6 +54,20 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } catch {
       Alert.alert('Error', 'Google login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setIsLoading(true);
+    try {
+      await loginWithApple();
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      if (error.message !== 'Apple Sign In was canceled') {
+        Alert.alert('Error', 'Apple login failed');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -125,6 +151,16 @@ export default function LoginScreen() {
               Continue with Google
             </Text>
           </Pressable>
+
+          {isAppleSignInAvailable && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={30}
+              style={styles.appleButton}
+              onPress={handleAppleLogin}
+            />
+          )}
 
           <View style={styles.footer}>
             <Text style={[styles.footerText, { color: theme.textSecondary }]}>
@@ -235,6 +271,10 @@ const styles = StyleSheet.create({
   googleText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  appleButton: {
+    width: '100%',
+    height: 56,
   },
   footer: {
     flexDirection: 'row',

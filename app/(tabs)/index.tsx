@@ -22,18 +22,32 @@ export default function HomeScreen() {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        const isDraggingLeft = gestureState.dx < 0;
+        const isHorizontal = Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        return isDraggingLeft && isHorizontal && Math.abs(gestureState.dx) > 5;
+      },
+      onPanResponderGrant: () => {
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dx < 0) {
-          panX.setValue(gestureState.dx);
+          const dampedValue = gestureState.dx * 0.7;
+          panX.setValue(dampedValue);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx < -80) {
+        const velocity = gestureState.vx;
+        const shouldNavigate = gestureState.dx < -60 || velocity < -0.5;
+        
+        if (shouldNavigate) {
+          if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          }
           Animated.timing(panX, {
-            toValue: -400,
-            duration: 200,
+            toValue: -500,
+            duration: 250,
             useNativeDriver: true,
           }).start(() => {
             panX.setValue(0);
@@ -42,6 +56,8 @@ export default function HomeScreen() {
         } else {
           Animated.spring(panX, {
             toValue: 0,
+            tension: 65,
+            friction: 8,
             useNativeDriver: true,
           }).start();
         }
@@ -211,7 +227,7 @@ export default function HomeScreen() {
             transform: [{ translateX: panX }],
           },
         ]}
-        {...panResponder.panHandlers}
+        {...(activeTab === 'forYou' ? panResponder.panHandlers : {})}
       >
         <FlatList
           data={filteredPosts}

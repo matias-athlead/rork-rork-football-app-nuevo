@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert, Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, User, ArrowLeft, ChevronDown } from 'lucide-react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
@@ -17,9 +18,20 @@ const POSITIONS: Position[] = ['GK', 'RB', 'LB', 'CB', 'DM', 'CM', 'AM', 'RW', '
 export default function RegisterScreen() {
   const router = useRouter();
   const { theme } = useTheme();
-  const { register, loginWithGoogle } = useAuth();
+  const { register, loginWithGoogle, loginWithApple } = useAuth();
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAppleSignInAvailable, setIsAppleSignInAvailable] = useState(false);
+
+  useEffect(() => {
+    const checkAppleSignIn = async () => {
+      if (Platform.OS === 'ios') {
+        const isAvailable = await AppleAuthentication.isAvailableAsync();
+        setIsAppleSignInAvailable(isAvailable);
+      }
+    };
+    checkAppleSignIn();
+  }, []);
 
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [role, setRole] = useState<UserRole>('player');
@@ -132,6 +144,20 @@ export default function RegisterScreen() {
       router.replace('/(tabs)');
     } catch {
       Alert.alert(t('common.error'), 'Google login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setIsLoading(true);
+    try {
+      await loginWithApple();
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      if (error.message !== 'Apple Sign In was canceled') {
+        Alert.alert(t('common.error'), 'Apple login failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -328,6 +354,16 @@ export default function RegisterScreen() {
               {t('auth.continueWithGoogle')}
             </Text>
           </Pressable>
+
+          {isAppleSignInAvailable && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={30}
+              style={styles.appleButton}
+              onPress={handleAppleLogin}
+            />
+          )}
 
           <View style={styles.footer}>
             <Text style={[styles.footerText, { color: theme.textSecondary }]}>
@@ -589,6 +625,10 @@ const styles = StyleSheet.create({
   googleText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  appleButton: {
+    width: '100%',
+    height: 56,
   },
   footer: {
     flexDirection: 'row',

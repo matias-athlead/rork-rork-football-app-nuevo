@@ -5,6 +5,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
+import { useAuth } from '@/src/hooks/useAuth';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,6 +38,7 @@ interface ChatMessage {
 
 export default function ChatScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [message, setMessage] = useState('');
@@ -52,6 +54,7 @@ export default function ChatScreen() {
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [photoType, setPhotoType] = useState<'permanent' | 'ephemeral'>('permanent');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   const chatUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
   const NOTES_KEY = `@chat_notes_${id}`;
@@ -283,10 +286,28 @@ export default function ChatScreen() {
           <Pressable onPress={() => router.push(`/audio-call/${id}` as any)} style={styles.headerAction}>
             <Phone size={22} color={theme.text} />
           </Pressable>
-          <Pressable onPress={() => router.push(`/video-call/${id}` as any)} style={styles.headerAction}>
+          <Pressable 
+            onPress={() => {
+              if (!user?.isPremium) {
+                setShowPremiumModal(true);
+              } else {
+                router.push(`/video-call/${id}` as any);
+              }
+            }} 
+            style={styles.headerAction}
+          >
             <Video size={22} color={theme.text} />
           </Pressable>
-          <Pressable onPress={() => setShowNotes(!showNotes)} style={styles.headerAction}>
+          <Pressable 
+            onPress={() => {
+              if (!user?.isPremium) {
+                setShowPremiumModal(true);
+              } else {
+                setShowNotes(!showNotes);
+              }
+            }} 
+            style={styles.headerAction}
+          >
             <StickyNote size={22} color={showNotes ? COLORS.skyBlue : theme.text} />
           </Pressable>
         </View>
@@ -581,6 +602,42 @@ export default function ChatScreen() {
               >
                 <Send size={18} color={COLORS.white} />
                 <Text style={styles.photoModalBtnTextPrimary}>Send</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showPremiumModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPremiumModal(false)}
+      >
+        <View style={styles.premiumModalOverlay}>
+          <View style={[styles.premiumModalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.premiumIconContainer}>
+              <Video size={48} color={COLORS.skyBlue} />
+            </View>
+            <Text style={[styles.premiumModalTitle, { color: theme.text }]}>Premium Feature</Text>
+            <Text style={[styles.premiumModalDescription, { color: theme.textSecondary }]}>
+              Video calls and private notes are exclusive features for premium members. Upgrade now to unlock these features and more!
+            </Text>
+            <View style={styles.premiumModalActions}>
+              <Pressable
+                onPress={() => setShowPremiumModal(false)}
+                style={[styles.premiumModalBtn, { backgroundColor: theme.inputBackground }]}
+              >
+                <Text style={[styles.premiumModalBtnText, { color: theme.text }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setShowPremiumModal(false);
+                  router.push('/premium');
+                }}
+                style={[styles.premiumModalBtn, styles.premiumModalBtnPrimary, { backgroundColor: COLORS.skyBlue }]}
+              >
+                <Text style={styles.premiumModalBtnTextPrimary}>Upgrade to Premium</Text>
               </Pressable>
             </View>
           </View>
@@ -958,6 +1015,65 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   photoModalBtnTextPrimary: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  premiumModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  premiumModalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+  },
+  premiumIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  premiumModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  premiumModalDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  premiumModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  premiumModalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  premiumModalBtnPrimary: {
+    flexDirection: 'row',
+  },
+  premiumModalBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  premiumModalBtnTextPrimary: {
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '600',

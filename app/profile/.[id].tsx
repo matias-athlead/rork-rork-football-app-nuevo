@@ -1,22 +1,73 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, FlatList, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Heart, MessageCircle } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { useAuth } from '@/src/hooks/useAuth';
+import { MOCK_USERS, MOCK_POSTS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
+import * as Haptics from 'expo-haptics';
+import { Post } from '@/src/types/Post';
+import * as Linking from 'expo-linking';
 
 export default function ProfileDetailScreen() {
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'stats'>('posts');
 
   const user = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
+  const userPosts = useMemo(() => MOCK_POSTS.filter(p => p.userId === user.id), [user.id]);
+  const isOwnProfile = currentUser?.id === user.id;
+
+  const handleFollow = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setIsFollowing(!isFollowing);
+  };
+
+  const handleMessage = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.push(`/chat/${user.id}`);
+  };
+
+  const handleLocationPress = () => {
+    if (user.city) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(user.city)}`;
+      Linking.openURL(url);
+    }
+  };
+
+  const renderPost = ({ item }: { item: Post }) => {
+    return (
+      <Pressable
+        onPress={() => router.push(`/post/${item.id}` as any)}
+        style={styles.gridPost}
+      >
+        <Image source={{ uri: item.thumbnailUrl }} style={styles.gridPostImage} contentFit="cover" />
+        <View style={styles.gridPostOverlay}>
+          <View style={styles.gridPostStats}>
+            <Heart size={16} color={COLORS.white} fill={item.isLiked ? COLORS.white : 'transparent'} />
+            <Text style={styles.gridPostStatText}>{item.likes}</Text>
+          </View>
+          <View style={styles.gridPostStats}>
+            <MessageCircle size={16} color={COLORS.white} />
+            <Text style={styles.gridPostStatText}>{item.comments}</Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.background }]}>
+      <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
@@ -24,7 +75,7 @@ export default function ProfileDetailScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView>
+      <ScrollView showsVerticalScrollIndicator={false}>
         <Image source={{ uri: user.coverPhoto }} style={styles.coverPhoto} />
         
         <View style={styles.content}>
@@ -32,7 +83,8 @@ export default function ProfileDetailScreen() {
             <Image source={{ uri: user.profilePhoto }} style={styles.avatar} />
           </View>
 
-          <Text style={[styles.username, { color: theme.text }]}>{user.username}</Text>
+          <Text style={[styles.username, { color: theme.text }]}>{user.fullName}</Text>
+          <Text style={[styles.handle, { color: theme.textSecondary }]}>@{user.username}</Text>
           <Text style={[styles.role, { color: theme.textSecondary }]}>
             {user.role.toUpperCase()}
           </Text>
@@ -41,9 +93,20 @@ export default function ProfileDetailScreen() {
             <Text style={[styles.bio, { color: theme.text }]}>{user.bio}</Text>
           )}
 
+          {user.city && (
+            <Pressable onPress={handleLocationPress} style={styles.locationContainer}>
+              <MapPin size={16} color={COLORS.skyBlue} />
+              <Text style={[styles.locationText, { color: COLORS.skyBlue }]}>{user.city}</Text>
+            </Pressable>
+          )}
+
           <View style={styles.statsContainer}>
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: theme.text }]}>{user.followers}</Text>
+              <Text style={[styles.statValue, { color: theme.text }]}>{userPosts.length}</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Posts</Text>
+            </View>
+            <View style={styles.stat}>
+              <Text style={[styles.statValue, { color: theme.text }]}>{user.followers + (isFollowing ? 1 : 0)}</Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Followers</Text>
             </View>
             <View style={styles.stat}>
@@ -52,9 +115,85 @@ export default function ProfileDetailScreen() {
             </View>
           </View>
 
-          <Pressable style={[styles.followButton, { backgroundColor: COLORS.primary }]}>
-            <Text style={styles.followButtonText}>Follow</Text>
-          </Pressable>
+          {!isOwnProfile && (
+            <View style={styles.actionsContainer}>
+              <Pressable
+                onPress={handleFollow}
+                style={[styles.followButton, { backgroundColor: isFollowing ? theme.card : COLORS.primary, borderWidth: isFollowing ? 1 : 0, borderColor: theme.border }]}
+              >
+                <Text style={[styles.followButtonText, { color: isFollowing ? theme.text : COLORS.white }]}>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleMessage}
+                style={[styles.messageButton, { backgroundColor: theme.card, borderColor: theme.border }]}
+              >
+                <Text style={[styles.messageButtonText, { color: theme.text }]}>Message</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <View style={[styles.tabBar, { borderBottomColor: theme.border }]}>
+            <Pressable
+              onPress={() => setActiveTab('posts')}
+              style={[styles.tabItem, activeTab === 'posts' && styles.tabItemActive]}
+            >
+              <Text style={[styles.tabText, { color: activeTab === 'posts' ? theme.text : theme.textSecondary }]}>
+                Posts
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setActiveTab('stats')}
+              style={[styles.tabItem, activeTab === 'stats' && styles.tabItemActive]}
+            >
+              <Text style={[styles.tabText, { color: activeTab === 'stats' ? theme.text : theme.textSecondary }]}>
+                Stats
+              </Text>
+            </Pressable>
+          </View>
+
+          {activeTab === 'posts' ? (
+            userPosts.length > 0 ? (
+              <FlatList
+                data={userPosts}
+                renderItem={renderPost}
+                keyExtractor={(item) => item.id}
+                numColumns={3}
+                scrollEnabled={false}
+                contentContainerStyle={styles.postsGrid}
+                columnWrapperStyle={styles.postsGridRow}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>No posts yet</Text>
+              </View>
+            )
+          ) : (
+            <View style={[styles.statsSection, { backgroundColor: theme.card }]}>
+              <Text style={[styles.statsSectionTitle, { color: theme.text }]}>Profile Statistics</Text>
+              {user.role === 'player' && 'stats' in user && (
+                <View style={styles.statsGrid}>
+                  <View style={styles.statCard}>
+                    <Text style={[styles.statCardValue, { color: theme.text }]}>{user.stats.goals}</Text>
+                    <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>Goals</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <Text style={[styles.statCardValue, { color: theme.text }]}>{user.stats.assists}</Text>
+                    <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>Assists</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <Text style={[styles.statCardValue, { color: theme.text }]}>{user.stats.matchesPlayed}</Text>
+                    <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>Matches</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <Text style={[styles.statCardValue, { color: theme.text }]}>{user.stats.passAccuracy}%</Text>
+                    <Text style={[styles.statCardLabel, { color: theme.textSecondary }]}>Pass Accuracy</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -71,6 +210,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 4,
@@ -99,8 +239,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.white,
   },
   username: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  handle: {
+    fontSize: 15,
     marginBottom: 4,
   },
   role: {
@@ -114,10 +258,22 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 20,
   },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  locationText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   statsContainer: {
     flexDirection: 'row',
-    gap: 40,
+    justifyContent: 'space-around',
+    width: '100%',
     marginBottom: 24,
+    paddingVertical: 16,
   },
   stat: {
     alignItems: 'center',
@@ -130,14 +286,124 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginBottom: 24,
+  },
   followButton: {
-    paddingHorizontal: 40,
+    flex: 1,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 10,
+    alignItems: 'center',
   },
   followButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+  },
+  messageButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  messageButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    marginBottom: 16,
+    width: '100%',
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  tabItemActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  postsGrid: {
+    paddingBottom: 20,
+  },
+  postsGridRow: {
+    gap: 2,
+    marginBottom: 2,
+  },
+  gridPost: {
+    flex: 1,
+    aspectRatio: 1,
+    position: 'relative',
+  },
+  gridPostImage: {
+    width: '100%',
+    height: '100%',
+  },
+  gridPostOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    opacity: 0,
+  },
+  gridPostStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  gridPostStatText: {
     color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyState: {
+    paddingVertical: 60,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 15,
+  },
+  statsSection: {
+    padding: 20,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  statsSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  statCard: {
+    width: '48%',
+    padding: 16,
+    alignItems: 'center',
+  },
+  statCardValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statCardLabel: {
+    fontSize: 13,
   },
 });

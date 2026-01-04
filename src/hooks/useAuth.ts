@@ -10,6 +10,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithApple: () => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: User) => Promise<void>;
@@ -50,6 +51,12 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     setToken(response.token);
   };
 
+  const loginWithApple = async () => {
+    const response = await authService.loginWithApple();
+    setUser(response.user);
+    setToken(response.token);
+  };
+
   const register = async (data: RegisterData) => {
     const response = await authService.register(data);
     setUser(response.user);
@@ -74,6 +81,7 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     isAuthenticated: !!user && !!token,
     login,
     loginWithGoogle,
+    loginWithApple,
     register,
     logout,
     updateUser
