@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, Share2, UserPlus, Bell, Send } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -32,6 +32,15 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     router.push(`/post-comments/${postId}` as any);
+  };
+
+  const handleVote = (postId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setPosts(posts.map(p => 
+      p.id === postId ? { ...p, votes: (p.votes || 0) + (p.isVoted ? -1 : 1), isVoted: !p.isVoted } : p
+    ));
   };
 
   const handleShare = async (post: Post) => {
@@ -94,6 +103,13 @@ export default function HomeScreen() {
           <Pressable onPress={() => handleComment(item.id)} style={styles.actionBtn}>
             <MessageCircle size={26} color={theme.text} />
           </Pressable>
+          <Pressable onPress={() => handleVote(item.id)} style={styles.actionBtn}>
+            <Flag
+              size={26}
+              color={item.isVoted ? COLORS.skyBlue : theme.text}
+              fill={item.isVoted ? COLORS.skyBlue : 'transparent'}
+            />
+          </Pressable>
           <Pressable onPress={() => handleShare(item)} style={styles.actionBtn}>
             <Share2 size={26} color={theme.text} />
           </Pressable>
@@ -109,6 +125,11 @@ export default function HomeScreen() {
         {item.comments > 0 && (
           <Text style={[styles.viewComments, { color: theme.textSecondary }]}>
             View all {item.comments} {t('home.comments')}
+          </Text>
+        )}
+        {(item.votes || 0) > 0 && (
+          <Text style={[styles.votesCount, { color: COLORS.skyBlue }]}>
+            {item.votes} {item.votes === 1 ? 'vote' : 'votes'}
           </Text>
         )}
       </View>
@@ -281,5 +302,10 @@ const styles = StyleSheet.create({
   viewComments: {
     fontSize: 13,
     marginTop: 6,
+  },
+  votesCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

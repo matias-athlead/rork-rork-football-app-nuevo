@@ -15,7 +15,9 @@ export interface Post {
   likes: number;
   comments: number;
   shares: number;
+  votes?: number;
   isLiked: boolean;
+  isVoted?: boolean;
   createdAt: string;
 }
 

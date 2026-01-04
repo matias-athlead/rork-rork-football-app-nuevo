@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Settings, Crown, Grid3x3, BarChart3 } from 'lucide-react-native';
+import { Settings, Crown, Grid3x3, BarChart3, MapPin } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
@@ -28,6 +29,32 @@ export default function ProfileScreen() {
       console.log('Error loading posts:', error);
     }
   }, [user]);
+
+  const handleOpenMaps = async () => {
+    if (!user?.city) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    const city = encodeURIComponent(user.city);
+    const url = Platform.select({
+      ios: `maps://app?q=${city}`,
+      android: `geo:0,0?q=${city}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${city}`,
+    }) as string;
+
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else if (Platform.OS !== 'web') {
+        const webUrl = `https://www.google.com/maps/search/?api=1&query=${city}`;
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.log('Error opening maps:', error);
+    }
+  };
 
   useEffect(() => {
     loadUserPosts();
@@ -79,9 +106,12 @@ export default function ProfileScreen() {
           {user.bio && (
             <Text style={[styles.bio, { color: theme.text }]}>{user.bio}</Text>
           )}
-          <Text style={[styles.location, { color: theme.textSecondary }]}>
-            📍 {user.city} • {user.federation}
-          </Text>
+          <Pressable onPress={handleOpenMaps} style={styles.locationContainer}>
+            <MapPin size={14} color={COLORS.skyBlue} />
+            <Text style={[styles.location, { color: COLORS.skyBlue }]}>
+              {user.city} • {user.federation}
+            </Text>
+          </Pressable>
         </View>
 
         {user.role === 'player' && 'stats' in user && (
@@ -237,9 +267,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    paddingVertical: 4,
+  },
   location: {
     fontSize: 13,
-    marginTop: 4,
+    fontWeight: '500',
   },
   statsCard: {
     marginHorizontal: 20,

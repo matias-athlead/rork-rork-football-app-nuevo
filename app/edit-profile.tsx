@@ -7,6 +7,7 @@ import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function EditProfileScreen() {
   const { theme } = useTheme();
@@ -69,6 +70,9 @@ export default function EditProfileScreen() {
       }
 
       await updateUser(updatedUser);
+      
+      await AsyncStorage.setItem('@user_profile', JSON.stringify(updatedUser));
+      
       Alert.alert('Success', 'Profile updated successfully!');
       router.back();
     } catch (error) {
