@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { X, Check, Crown, Zap, BarChart3, Eye, Video } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -9,7 +9,7 @@ import { COLORS } from '@/src/utils/theme';
 
 export default function PremiumScreen() {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const router = useRouter();
 
   if (!user) return null;
@@ -17,8 +17,24 @@ export default function PremiumScreen() {
   const features = PREMIUM_FEATURES[user.role];
   const price = user.role === 'player' ? 9.99 : user.role === 'coach' ? 14.99 : 19.99;
 
-  const handleSubscribe = () => {
-    console.log('Subscribe to premium');
+  const handleSubscribe = async () => {
+    console.log('[Premium] Demo mode - granting premium access');
+    if (!user) return;
+
+    try {
+      const updatedUser = {
+        ...user,
+        isPremium: true,
+      };
+
+      await updateUser(updatedUser);
+      Alert.alert('Success', '¡Premium activado! All premium features are now enabled for demo.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error) {
+      console.error('[Premium] Failed to grant premium:', error);
+      Alert.alert('Error', 'Failed to activate premium');
+    }
   };
 
   return (

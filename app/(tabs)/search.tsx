@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, Pressable, SafeAreaView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TextInput, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Search as SearchIcon, Filter, MapPin } from 'lucide-react-native';
+import { Search as SearchIcon, Filter, MapPin, MessageCircle } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { User, PlayerProfile } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
+import * as Haptics from 'expo-haptics';
 
 export default function SearchScreen() {
   const { theme } = useTheme();
@@ -14,6 +15,7 @@ export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filteredUsers, setFilteredUsers] = useState(MOCK_USERS);
+  const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -27,6 +29,30 @@ export default function SearchScreen() {
       setFilteredUsers(filtered);
     }
   };
+
+  const handleFollow = useCallback((userId: string, event: any) => {
+    event.stopPropagation();
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setFollowingUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleMessage = useCallback((userId: string, event: any) => {
+    event.stopPropagation();
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.push(`/chat/${userId}` as any);
+  }, [router]);
 
   const renderUser = ({ item }: { item: User }) => (
     <Pressable
@@ -66,9 +92,22 @@ export default function SearchScreen() {
           </View>
         )}
       </View>
-      <Pressable style={styles.followButton}>
-        <Text style={styles.followButtonText}>Follow</Text>
-      </Pressable>
+      <View style={styles.actionButtons}>
+        <Pressable 
+          onPress={(e) => handleMessage(item.id, e)} 
+          style={[styles.messageButton, { backgroundColor: theme.inputBackground }]}
+        >
+          <MessageCircle size={18} color={theme.text} />
+        </Pressable>
+        <Pressable 
+          onPress={(e) => handleFollow(item.id, e)} 
+          style={[styles.followButton, { backgroundColor: followingUsers.has(item.id) ? theme.card : COLORS.primary, borderWidth: followingUsers.has(item.id) ? 1 : 0, borderColor: theme.border }]}
+        >
+          <Text style={[styles.followButtonText, { color: followingUsers.has(item.id) ? theme.text : COLORS.white }]}>
+            {followingUsers.has(item.id) ? 'Following' : 'Follow'}
+          </Text>
+        </Pressable>
+      </View>
     </Pressable>
   );
 
@@ -254,15 +293,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  actionButtons: {
+    flexDirection: 'column',
+    gap: 8,
+    alignSelf: 'flex-start',
+  },
+  messageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   followButton: {
-    backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     alignSelf: 'flex-start',
   },
   followButtonText: {
-    color: COLORS.white,
     fontSize: 14,
     fontWeight: '600',
   },
