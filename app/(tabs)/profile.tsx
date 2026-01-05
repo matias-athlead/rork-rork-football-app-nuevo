@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Settings, Crown, Grid3x3, BarChart3, MapPin } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -59,6 +59,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadUserPosts();
   }, [loadUserPosts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserPosts();
+    }, [loadUserPosts])
+  );
 
   if (!user) return null;
 

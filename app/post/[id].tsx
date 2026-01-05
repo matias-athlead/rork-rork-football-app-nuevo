@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -59,9 +59,14 @@ export default function PostDetailScreen() {
         </Pressable>
         <Text style={[styles.title, { color: theme.text }]}>Post</Text>
         {isOwnPost ? (
-          <Pressable onPress={handleDeletePost} style={styles.deleteButton}>
-            <Trash2 size={22} color={COLORS.error} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable onPress={() => router.push(`/edit-post/${id}` as any)} style={styles.editButton}>
+              <Edit3 size={22} color={theme.text} />
+            </Pressable>
+            <Pressable onPress={handleDeletePost} style={styles.deleteButton}>
+              <Trash2 size={22} color={COLORS.error} />
+            </Pressable>
+          </View>
         ) : (
           <View style={{ width: 24 }} />
         )}
@@ -130,6 +135,13 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: 400,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  editButton: {
+    padding: 4,
   },
   deleteButton: {
     padding: 4,
