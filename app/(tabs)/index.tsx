@@ -10,6 +10,7 @@ import { Post } from '@/src/types/Post';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
+import VideoPlayer from '@/src/components/VideoPlayer';
 
 export default function HomeScreen() {
   const { theme } = useTheme();
@@ -150,10 +151,12 @@ export default function HomeScreen() {
         </Pressable>
       </Pressable>
 
-      <Image
-        source={{ uri: item.thumbnailUrl }}
+      <VideoPlayer
+        uri={item.videoUrl}
         style={styles.postImage}
-        contentFit="cover"
+        autoPlay={false}
+        loop={true}
+        showControls={true}
       />
 
       <View style={styles.postActions}>

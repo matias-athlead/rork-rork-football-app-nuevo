@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause } from 'lucide-react-native';
@@ -9,6 +9,7 @@ import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MOCK_USERS } from '@/src/services/mockData';
 
 type AspectRatio = '3:4' | '4:5' | 'original';
 
@@ -26,6 +27,10 @@ export default function CreateScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<Video>(null);
+  const [showMentionModal, setShowMentionModal] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionedUsers, setMentionedUsers] = useState<string[]>([]);
+  const captionInputRef = useRef<TextInput>(null);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
@@ -34,6 +39,40 @@ export default function CreateScreen() {
       default: return 1;
     }
   };
+
+  const handleCaptionChange = (text: string) => {
+    setCaption(text);
+    
+    const lastAtIndex = text.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const textAfterAt = text.slice(lastAtIndex + 1);
+      const hasSpace = textAfterAt.includes(' ');
+      
+      if (!hasSpace && textAfterAt.length >= 0) {
+        setMentionSearch(textAfterAt);
+        setShowMentionModal(true);
+      } else {
+        setShowMentionModal(false);
+      }
+    } else {
+      setShowMentionModal(false);
+    }
+  };
+
+  const handleSelectMention = (username: string) => {
+    const lastAtIndex = caption.lastIndexOf('@');
+    const newCaption = caption.slice(0, lastAtIndex) + `@${username} `;
+    setCaption(newCaption);
+    setShowMentionModal(false);
+    if (!mentionedUsers.includes(username)) {
+      setMentionedUsers([...mentionedUsers, username]);
+    }
+    captionInputRef.current?.focus();
+  };
+
+  const filteredUsers = MOCK_USERS.filter(u => 
+    u.username.toLowerCase().includes(mentionSearch.toLowerCase())
+  ).slice(0, 10);
 
   const savePost = async () => {
     if (!selectedMedia || !user) {
@@ -60,6 +99,7 @@ export default function CreateScreen() {
         caption: caption || 'New post',
         aspectRatio,
         mediaType,
+        taggedUsers: mentionedUsers,
         createdAt: new Date().toISOString(),
       };
 
@@ -71,6 +111,7 @@ export default function CreateScreen() {
       setMediaType(null);
       setCaption('');
       setAspectRatio('4:5');
+      setMentionedUsers([]);
       router.back();
     } catch {
       Alert.alert('Error', 'Failed to save post');
@@ -280,14 +321,33 @@ export default function CreateScreen() {
             <View style={[styles.captionSection, { backgroundColor: theme.card }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Caption</Text>
               <TextInput
+                ref={captionInputRef}
                 style={[styles.captionInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
-                placeholder="Write a caption..."
+                placeholder="Write a caption... Use @ to mention users"
                 placeholderTextColor={theme.textSecondary}
                 value={caption}
-                onChangeText={setCaption}
+                onChangeText={handleCaptionChange}
                 multiline
                 numberOfLines={4}
               />
+              {mentionedUsers.length > 0 && (
+                <View style={styles.mentionedUsersContainer}>
+                  <Text style={[styles.mentionedLabel, { color: theme.textSecondary }]}>Mentioned:</Text>
+                  <View style={styles.mentionedUsers}>
+                    {mentionedUsers.map((username, index) => (
+                      <View key={index} style={[styles.mentionChip, { backgroundColor: theme.inputBackground }]}>
+                        <Text style={[styles.mentionChipText, { color: COLORS.skyBlue }]}>@{username}</Text>
+                        <Pressable 
+                          onPress={() => setMentionedUsers(mentionedUsers.filter(u => u !== username))}
+                          style={styles.removeMention}
+                        >
+                          <X size={14} color={theme.textSecondary} />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -315,6 +375,34 @@ export default function CreateScreen() {
                 {aspectRatio === ratio && <Check size={20} color={COLORS.white} />}
               </Pressable>
             ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showMentionModal} transparent animationType="fade">
+        <Pressable style={styles.mentionModalOverlay} onPress={() => setShowMentionModal(false)}>
+          <View style={[styles.mentionModalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.mentionModalTitle, { color: theme.text }]}>Mention Users</Text>
+            <FlatList
+              data={filteredUsers}
+              keyExtractor={(item) => item.id}
+              style={styles.mentionList}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => handleSelectMention(item.username)}
+                  style={[styles.mentionItem, { backgroundColor: theme.inputBackground }]}
+                >
+                  <Image source={{ uri: item.profilePhoto }} style={styles.mentionAvatar} />
+                  <View style={styles.mentionInfo}>
+                    <Text style={[styles.mentionUsername, { color: theme.text }]}>@{item.username}</Text>
+                    <Text style={[styles.mentionFullName, { color: theme.textSecondary }]}>{item.fullName}</Text>
+                  </View>
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={[styles.noResults, { color: theme.textSecondary }]}>No users found</Text>
+              }
+            />
           </View>
         </Pressable>
       </Modal>
@@ -498,5 +586,80 @@ const styles = StyleSheet.create({
   aspectOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  mentionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  mentionModalContent: {
+    borderRadius: 20,
+    padding: 16,
+    maxHeight: '70%',
+  },
+  mentionModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  mentionList: {
+    maxHeight: 300,
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  mentionAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  mentionInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  mentionUsername: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  mentionFullName: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  noResults: {
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 20,
+  },
+  mentionedUsersContainer: {
+    marginTop: 12,
+  },
+  mentionedLabel: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  mentionedUsers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  mentionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    gap: 6,
+  },
+  mentionChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  removeMention: {
+    padding: 2,
   },
 });

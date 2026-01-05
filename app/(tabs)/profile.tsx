@@ -170,12 +170,19 @@ export default function ProfileScreen() {
         <View style={styles.postsGrid}>
           {userPosts.length > 0 ? (
             userPosts.map((post, index) => (
-              <Pressable key={index} style={styles.postItem}>
+              <Pressable 
+                key={index} 
+                style={styles.postItem}
+                onPress={() => router.push(`/post/${post.id}` as any)}
+              >
                 <Image
                   source={{ uri: post.thumbnailUrl }}
                   style={styles.postImage}
                   contentFit="cover"
                 />
+                <View style={styles.videoIndicator}>
+                  <Text style={styles.videoIndicatorText}>▶</Text>
+                </View>
               </Pressable>
             ))
           ) : (
@@ -369,5 +376,18 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
+  },
+  videoIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  videoIndicatorText: {
+    color: COLORS.white,
+    fontSize: 10,
   },
 });

@@ -51,6 +51,9 @@ export default function ProfileDetailScreen() {
         style={styles.gridPost}
       >
         <Image source={{ uri: item.thumbnailUrl }} style={styles.gridPostImage} contentFit="cover" />
+        <View style={styles.videoIndicatorBadge}>
+          <Text style={styles.videoIndicatorBadgeText}>▶</Text>
+        </View>
         <View style={styles.gridPostOverlay}>
           <View style={styles.gridPostStats}>
             <Heart size={16} color={COLORS.white} fill={item.isLiked ? COLORS.white : 'transparent'} />
@@ -405,5 +408,18 @@ const styles = StyleSheet.create({
   },
   statCardLabel: {
     fontSize: 13,
+  },
+  videoIndicatorBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  videoIndicatorBadgeText: {
+    color: COLORS.white,
+    fontSize: 10,
   },
 });
