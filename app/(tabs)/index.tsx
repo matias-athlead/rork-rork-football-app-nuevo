@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView } from 'react-native';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share } from 'lucide-react-native';
+import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -31,6 +31,7 @@ export default function HomeScreen() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [sendSearchQuery, setSendSearchQuery] = useState('');
   const panX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
@@ -319,6 +320,7 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setSelectedPost(post);
+    setSendSearchQuery('');
     setShowSendModal(true);
   };
 
@@ -343,6 +345,7 @@ export default function HomeScreen() {
     setShowSendModal(false);
     setSelectedUsers([]);
     setSelectedPost(null);
+    setSendSearchQuery('');
   };
 
   const handleDoubleTap = (postId: string) => {
@@ -513,6 +516,17 @@ export default function HomeScreen() {
     ? posts.filter(p => followedUsers.includes(p.userId))
     : posts;
 
+  const chatUsers = useMemo(() => MOCK_USERS.slice(0, 15), []);
+
+  const filteredChatUsers = useMemo(() => {
+    if (!sendSearchQuery.trim()) return chatUsers;
+    const query = sendSearchQuery.toLowerCase();
+    return chatUsers.filter(user => 
+      user.username.toLowerCase().includes(query) ||
+      user.fullName.toLowerCase().includes(query)
+    );
+  }, [sendSearchQuery, chatUsers]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.topHeader, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
@@ -648,12 +662,28 @@ export default function HomeScreen() {
                 setShowSendModal(false);
                 setSelectedUsers([]);
                 setSelectedPost(null);
+                setSendSearchQuery('');
               }}>
                 <Text style={[styles.sendModalCancel, { color: COLORS.skyBlue }]}>Cancel</Text>
               </Pressable>
             </View>
+            <View style={[styles.sendModalSearchContainer, { backgroundColor: theme.inputBackground }]}>
+              <Search size={18} color={theme.textSecondary} />
+              <TextInput
+                style={[styles.sendModalSearchInput, { color: theme.text }]}
+                placeholder="Search users..."
+                placeholderTextColor={theme.textSecondary}
+                value={sendSearchQuery}
+                onChangeText={setSendSearchQuery}
+              />
+              {sendSearchQuery.length > 0 && (
+                <Pressable onPress={() => setSendSearchQuery('')}>
+                  <X size={18} color={theme.textSecondary} />
+                </Pressable>
+              )}
+            </View>
             <ScrollView style={styles.sendModalUserList}>
-              {MOCK_USERS.slice(0, 15).map((mockUser) => {
+              {filteredChatUsers.map((mockUser) => {
                 const isSelected = selectedUsers.includes(mockUser.id);
                 return (
                   <Pressable
@@ -675,6 +705,11 @@ export default function HomeScreen() {
                   </Pressable>
                 );
               })}
+              {filteredChatUsers.length === 0 && (
+                <View style={styles.sendModalEmpty}>
+                  <Text style={[styles.sendModalEmptyText, { color: theme.textSecondary }]}>No users found</Text>
+                </View>
+              )}
             </ScrollView>
             <Pressable
               onPress={handleConfirmSend}
@@ -944,6 +979,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  sendModalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    gap: 10,
+  },
+  sendModalSearchInput: {
+    flex: 1,
+    fontSize: 15,
+  },
   sendModalUserList: {
     flex: 1,
     paddingHorizontal: 20,
@@ -996,5 +1046,12 @@ const styles = StyleSheet.create({
   sendModalButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  sendModalEmpty: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  sendModalEmptyText: {
+    fontSize: 15,
   },
 });

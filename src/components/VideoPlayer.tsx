@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Play, Volume2, VolumeX } from 'lucide-react-native';
+import { Play, Volume2, VolumeX, Pause } from 'lucide-react-native';
 import { COLORS } from '@/src/utils/theme';
+import * as Haptics from 'expo-haptics';
 
 interface VideoPlayerProps {
   uri: string;
@@ -28,6 +29,8 @@ export default function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isHolding, setIsHolding] = useState(false);
+  const [wasPlayingBeforeHold, setWasPlayingBeforeHold] = useState(false);
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -45,15 +48,23 @@ export default function VideoPlayer({
     }
   }, [isVisible, isFocused, isPlaying]);
 
-  const handlePlayPause = async () => {
+  const handlePressIn = async () => {
     if (!videoRef.current) return;
-    
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setIsHolding(true);
+    setWasPlayingBeforeHold(isPlaying);
     if (isPlaying) {
       await videoRef.current.pauseAsync();
-      setIsPlaying(false);
-    } else {
+    }
+  };
+
+  const handlePressOut = async () => {
+    if (!videoRef.current) return;
+    setIsHolding(false);
+    if (wasPlayingBeforeHold) {
       await videoRef.current.playAsync();
-      setIsPlaying(true);
     }
   };
 
@@ -94,12 +105,18 @@ export default function VideoPlayer({
 
       {showControls && (
         <Pressable 
-          onPress={handlePlayPause} 
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
           style={styles.controlsOverlay}
         >
-          {!isPlaying && (
+          {!isPlaying && !isHolding && (
             <View style={styles.playButton}>
               <Play size={40} color={COLORS.white} fill={COLORS.white} />
+            </View>
+          )}
+          {isHolding && (
+            <View style={styles.pauseIndicator}>
+              <Pause size={40} color={COLORS.white} fill={COLORS.white} />
             </View>
           )}
         </Pressable>
@@ -165,5 +182,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 20,
     padding: 10,
+  },
+  pauseIndicator: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 40,
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
