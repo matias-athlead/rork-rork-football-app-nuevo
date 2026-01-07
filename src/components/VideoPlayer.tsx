@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Play, Volume2, VolumeX, Pause } from 'lucide-react-native';
 import { COLORS } from '@/src/utils/theme';
@@ -30,7 +30,16 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isHolding, setIsHolding] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const videoRef = useRef<Video>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (forceMute) {
@@ -40,64 +49,69 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const handleVisibility = async () => {
-      if (!videoRef.current) return;
+      if (!videoRef.current || !isMounted.current || hasError) return;
       
-      if (Platform.OS === 'web') {
-        const video = videoRef.current as any;
-        if (isVisible && isFocused && !isHolding) {
-          try {
+      try {
+        if (Platform.OS === 'web') {
+          const video = videoRef.current as any;
+          if (isVisible && isFocused && !isHolding) {
             await video.play();
-            setIsPlaying(true);
-          } catch (e) {
-            console.log('Video play failed:', e);
+            if (isMounted.current) setIsPlaying(true);
+          } else {
+            video.pause();
+            if (isMounted.current) setIsPlaying(false);
           }
         } else {
-          video.pause();
-          setIsPlaying(false);
+          if (isVisible && isFocused && !isHolding) {
+            await (videoRef.current as any).playAsync();
+            if (isMounted.current) setIsPlaying(true);
+          } else {
+            await (videoRef.current as any).pauseAsync();
+            if (isMounted.current) setIsPlaying(false);
+          }
         }
-      } else {
-        if (isVisible && isFocused && !isHolding) {
-          await (videoRef.current as any).playAsync();
-          setIsPlaying(true);
-        } else {
-          await (videoRef.current as any).pauseAsync();
-          setIsPlaying(false);
-        }
+      } catch (e) {
+        console.log('Video playback error:', e);
       }
     };
     
-    handleVisibility();
-  }, [isVisible, isFocused, isHolding]);
+    const timeoutId = setTimeout(handleVisibility, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isVisible, isFocused, isHolding, hasError]);
 
   const handlePressIn = async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || hasError) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setIsHolding(true);
     
-    if (Platform.OS === 'web') {
-      (videoRef.current as any).pause();
-    } else {
-      await (videoRef.current as any).pauseAsync();
+    try {
+      if (Platform.OS === 'web') {
+        (videoRef.current as any).pause();
+      } else {
+        await (videoRef.current as any).pauseAsync();
+      }
+      setIsPlaying(false);
+    } catch (e) {
+      console.log('Video pause error:', e);
     }
-    setIsPlaying(false);
   };
 
   const handlePressOut = async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || hasError) return;
     setIsHolding(false);
     if (isVisible && isFocused) {
-      if (Platform.OS === 'web') {
-        try {
+      try {
+        if (Platform.OS === 'web') {
           await (videoRef.current as any).play();
           setIsPlaying(true);
-        } catch (e) {
-          console.log('Video play failed:', e);
+        } else {
+          await (videoRef.current as any).playAsync();
+          setIsPlaying(true);
         }
-      } else {
-        await (videoRef.current as any).playAsync();
-        setIsPlaying(true);
+      } catch (e) {
+        console.log('Video play error:', e);
       }
     }
   };
@@ -108,12 +122,19 @@ export default function VideoPlayer({
   };
 
   const handleVideoStatusUpdate = (status: AVPlaybackStatus) => {
+    if (!isMounted.current) return;
+    
     if (status.isLoaded) {
       setIsLoading(false);
       setIsPlaying(status.isPlaying);
+      setHasError(false);
       if (status.didJustFinish && !loop) {
         setIsPlaying(false);
       }
+    } else if ('error' in status) {
+      console.log('Video error:', status.error);
+      setHasError(true);
+      setIsLoading(false);
     }
   };
 
@@ -194,18 +215,31 @@ export default function VideoPlayer({
     );
   }
 
+  if (!uri || hasError) {
+    return (
+      <View style={[styles.container, style, styles.errorContainer]}>
+        <Text style={styles.errorText}>Unable to load video</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, style]}>
       <Video
-        ref={videoRef as any}
+        ref={videoRef}
         source={{ uri }}
         style={styles.video}
         resizeMode={ResizeMode.COVER}
         isLooping={loop}
         isMuted={isMuted}
-        shouldPlay={autoPlay}
+        shouldPlay={false}
         onPlaybackStatusUpdate={handleVideoStatusUpdate}
         useNativeControls={false}
+        onError={(error) => {
+          console.log('Video component error:', error);
+          setHasError(true);
+          setIsLoading(false);
+        }}
       />
       
       {isLoading && (
@@ -258,6 +292,14 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: '100%',
+  },
+  errorContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: COLORS.white,
+    fontSize: 14,
   },
   loadingOverlay: {
     position: 'absolute',
