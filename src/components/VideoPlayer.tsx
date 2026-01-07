@@ -42,12 +42,27 @@ export default function VideoPlayer({
     const handleVisibility = async () => {
       if (!videoRef.current) return;
       
-      if (isVisible && isFocused && !isHolding) {
-        await videoRef.current.playAsync();
-        setIsPlaying(true);
+      if (Platform.OS === 'web') {
+        const video = videoRef.current as any;
+        if (isVisible && isFocused && !isHolding) {
+          try {
+            await video.play();
+            setIsPlaying(true);
+          } catch (e) {
+            console.log('Video play failed:', e);
+          }
+        } else {
+          video.pause();
+          setIsPlaying(false);
+        }
       } else {
-        await videoRef.current.pauseAsync();
-        setIsPlaying(false);
+        if (isVisible && isFocused && !isHolding) {
+          await (videoRef.current as any).playAsync();
+          setIsPlaying(true);
+        } else {
+          await (videoRef.current as any).pauseAsync();
+          setIsPlaying(false);
+        }
       }
     };
     
@@ -60,7 +75,12 @@ export default function VideoPlayer({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setIsHolding(true);
-    await videoRef.current.pauseAsync();
+    
+    if (Platform.OS === 'web') {
+      (videoRef.current as any).pause();
+    } else {
+      await (videoRef.current as any).pauseAsync();
+    }
     setIsPlaying(false);
   };
 
@@ -68,8 +88,17 @@ export default function VideoPlayer({
     if (!videoRef.current) return;
     setIsHolding(false);
     if (isVisible && isFocused) {
-      await videoRef.current.playAsync();
-      setIsPlaying(true);
+      if (Platform.OS === 'web') {
+        try {
+          await (videoRef.current as any).play();
+          setIsPlaying(true);
+        } catch (e) {
+          console.log('Video play failed:', e);
+        }
+      } else {
+        await (videoRef.current as any).playAsync();
+        setIsPlaying(true);
+      }
     }
   };
 
@@ -88,10 +117,87 @@ export default function VideoPlayer({
     }
   };
 
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.container, style]}>
+        <video
+          ref={videoRef as any}
+          src={uri}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+          loop={loop}
+          muted={isMuted}
+          playsInline
+          onLoadStart={() => setIsLoading(true)}
+          onCanPlay={() => setIsLoading(false)}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+        />
+        
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={COLORS.white} />
+          </View>
+        )}
+
+        {showControls && (
+          <Pressable 
+            onPressIn={() => {
+              setIsHolding(true);
+              const video = videoRef.current as any;
+              if (video) video.pause();
+              setIsPlaying(false);
+            }}
+            onPressOut={() => {
+              setIsHolding(false);
+              const video = videoRef.current as any;
+              if (video && isVisible && isFocused) {
+                video.play();
+                setIsPlaying(true);
+              }
+            }}
+            style={styles.controlsOverlay}
+          >
+            {!isPlaying && !isHolding && (
+              <View style={styles.playButton}>
+                <Play size={40} color={COLORS.white} fill={COLORS.white} />
+              </View>
+            )}
+            {isHolding && (
+              <View style={styles.pauseIndicator}>
+                <Pause size={40} color={COLORS.white} fill={COLORS.white} />
+              </View>
+            )}
+          </Pressable>
+        )}
+
+        {showControls && !forceMute && (
+          <Pressable 
+            onPress={() => {
+              setIsMuted(!isMuted);
+              const video = videoRef.current as any;
+              if (video) video.muted = !isMuted;
+            }}
+            style={styles.muteButton}
+          >
+            {isMuted ? (
+              <VolumeX size={24} color={COLORS.white} />
+            ) : (
+              <Volume2 size={24} color={COLORS.white} />
+            )}
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, style]}>
       <Video
-        ref={videoRef}
+        ref={videoRef as any}
         source={{ uri }}
         style={styles.video}
         resizeMode={ResizeMode.COVER}
