@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -31,6 +31,12 @@ export default function CreateScreen() {
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionedUsers, setMentionedUsers] = useState<string[]>([]);
   const captionInputRef = useRef<TextInput>(null);
+  const [location, setLocation] = useState('');
+  const [musicSound, setMusicSound] = useState('');
+  const [clubTag, setClubTag] = useState('');
+  const [showClubModal, setShowClubModal] = useState(false);
+  const [clubSearch, setClubSearch] = useState('');
+  const clubInputRef = useRef<TextInput>(null);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
@@ -74,6 +80,12 @@ export default function CreateScreen() {
     u.username.toLowerCase().includes(mentionSearch.toLowerCase())
   ).slice(0, 10);
 
+  const clubUsers = MOCK_USERS.filter(u => u.role === 'club');
+  const filteredClubs = clubUsers.filter(club => 
+    club.username.toLowerCase().includes(clubSearch.toLowerCase()) ||
+    club.fullName.toLowerCase().includes(clubSearch.toLowerCase())
+  ).slice(0, 10);
+
   const savePost = async () => {
     if (!selectedMedia || !user) {
       Alert.alert('Error', 'Please select media first');
@@ -100,6 +112,9 @@ export default function CreateScreen() {
         aspectRatio,
         mediaType,
         taggedUsers: mentionedUsers,
+        location: location || undefined,
+        musicSound: musicSound || undefined,
+        clubTag: clubTag || undefined,
         createdAt: new Date().toISOString(),
       };
 
@@ -112,6 +127,9 @@ export default function CreateScreen() {
       setCaption('');
       setAspectRatio('4:5');
       setMentionedUsers([]);
+      setLocation('');
+      setMusicSound('');
+      setClubTag('');
       router.back();
     } catch {
       Alert.alert('Error', 'Failed to save post');
@@ -349,6 +367,62 @@ export default function CreateScreen() {
                 </View>
               )}
             </View>
+
+            <View style={[styles.metadataSection, { backgroundColor: theme.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Additional Details</Text>
+              
+              <View style={styles.metadataItem}>
+                <View style={styles.metadataHeader}>
+                  <MapPin size={20} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataLabel, { color: theme.text }]}>Location</Text>
+                </View>
+                <TextInput
+                  style={[styles.metadataInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
+                  placeholder="Add location..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={location}
+                  onChangeText={setLocation}
+                />
+              </View>
+
+              <View style={styles.metadataItem}>
+                <View style={styles.metadataHeader}>
+                  <Music size={20} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataLabel, { color: theme.text }]}>Music/Sound</Text>
+                </View>
+                <TextInput
+                  style={[styles.metadataInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
+                  placeholder="Add music or sound..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={musicSound}
+                  onChangeText={setMusicSound}
+                />
+              </View>
+
+              <View style={styles.metadataItem}>
+                <View style={styles.metadataHeader}>
+                  <Users size={20} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataLabel, { color: theme.text }]}>Club Tag</Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    setClubSearch('');
+                    setShowClubModal(true);
+                  }}
+                  style={[styles.clubTagButton, { backgroundColor: theme.inputBackground }]}
+                >
+                  <Text style={[styles.clubTagText, { color: clubTag ? theme.text : theme.textSecondary }]}>
+                    {clubTag ? `@${clubTag}` : 'Tag a club...'}
+                  </Text>
+                  {clubTag && (
+                    <Pressable onPress={() => setClubTag('')} style={styles.clearClubTag}>
+                      <X size={16} color={theme.textSecondary} />
+                    </Pressable>
+                  )}
+                </Pressable>
+                <Text style={[styles.clubHint, { color: theme.textSecondary }]}>Only clubs with accounts can be tagged</Text>
+              </View>
+            </View>
           </>
         )}
       </ScrollView>
@@ -401,6 +475,53 @@ export default function CreateScreen() {
               )}
               ListEmptyComponent={
                 <Text style={[styles.noResults, { color: theme.textSecondary }]}>No users found</Text>
+              }
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showClubModal} transparent animationType="slide">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowClubModal(false)}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]} onStartShouldSetResponder={() => true}>
+            <View style={styles.clubModalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Tag a Club</Text>
+              <Pressable onPress={() => setShowClubModal(false)}>
+                <X size={24} color={theme.text} />
+              </Pressable>
+            </View>
+            <TextInput
+              ref={clubInputRef}
+              style={[styles.searchInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
+              placeholder="Search clubs..."
+              placeholderTextColor={theme.textSecondary}
+              value={clubSearch}
+              onChangeText={setClubSearch}
+              autoFocus
+            />
+            <FlatList
+              data={filteredClubs}
+              keyExtractor={(item) => item.id}
+              style={styles.clubList}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setClubTag(item.username);
+                    setShowClubModal(false);
+                  }}
+                  style={[styles.clubItem, { backgroundColor: theme.inputBackground }]}
+                >
+                  <Image source={{ uri: item.profilePhoto }} style={styles.clubAvatar} />
+                  <View style={styles.clubInfo}>
+                    <Text style={[styles.clubUsername, { color: theme.text }]}>@{item.username}</Text>
+                    <Text style={[styles.clubFullName, { color: theme.textSecondary }]}>{item.fullName}</Text>
+                  </View>
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={[styles.noResults, { color: theme.textSecondary }]}>
+                  {clubUsers.length === 0 ? 'No clubs available' : 'No clubs found'}
+                </Text>
               }
             />
           </View>
@@ -661,5 +782,88 @@ const styles = StyleSheet.create({
   },
   removeMention: {
     padding: 2,
+  },
+  metadataSection: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    gap: 16,
+  },
+  metadataItem: {
+    gap: 8,
+  },
+  metadataHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metadataLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  metadataInput: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    fontSize: 15,
+  },
+  clubTagButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  clubTagText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  clearClubTag: {
+    padding: 4,
+  },
+  clubHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  clubModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchInput: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  clubList: {
+    maxHeight: 400,
+  },
+  clubItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  clubAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  clubInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  clubUsername: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  clubFullName: {
+    fontSize: 13,
+    marginTop: 2,
   },
 });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, Share2, UserX } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, Share2, UserX, MapPin, Music, Users } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -257,6 +257,29 @@ export default function PostDetailScreen() {
             </View>
           )}
 
+          {(post.location || post.musicSound || post.clubTag) && (
+            <View style={styles.metadataSection}>
+              {post.location && (
+                <View style={styles.metadataItem}>
+                  <MapPin size={18} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataText, { color: theme.text }]}>{post.location}</Text>
+                </View>
+              )}
+              {post.musicSound && (
+                <View style={styles.metadataItem}>
+                  <Music size={18} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataText, { color: theme.text }]}>{post.musicSound}</Text>
+                </View>
+              )}
+              {post.clubTag && (
+                <View style={styles.metadataItem}>
+                  <Users size={18} color={COLORS.skyBlue} />
+                  <Text style={[styles.metadataText, { color: COLORS.skyBlue }]}>@{post.clubTag}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <View style={styles.stats}>
             <Text style={[styles.statText, { color: theme.textSecondary }]}>
               {post.likes || 0} likes
@@ -432,6 +455,22 @@ const styles = StyleSheet.create({
   taggedUser: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  metadataSection: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(128, 128, 128, 0.05)',
+    borderRadius: 8,
+    gap: 10,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metadataText: {
+    fontSize: 14,
+    flex: 1,
   },
   modalOverlay: {
     flex: 1,

@@ -19,6 +19,9 @@ export interface Post {
   isLiked: boolean;
   isVoted?: boolean;
   createdAt: string;
+  location?: string;
+  musicSound?: string;
+  clubTag?: string;
 }
 
 export interface Comment {
