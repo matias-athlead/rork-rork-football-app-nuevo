@@ -95,7 +95,7 @@ export default function RadarStatsScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          {user.role.toUpperCase()} STATS
+          {user.role ? user.role.toUpperCase() : 'USER'} STATS
         </Text>
 
         <View style={[styles.chartContainer, { backgroundColor: theme.card }]}>

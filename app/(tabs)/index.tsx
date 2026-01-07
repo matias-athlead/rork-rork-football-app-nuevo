@@ -204,7 +204,7 @@ export default function HomeScreen() {
         <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
         <View style={styles.postHeaderInfo}>
           <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
-          <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole.toUpperCase()}</Text>
+          <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole ? item.userRole.toUpperCase() : 'USER'}</Text>
         </View>
         <Pressable style={styles.followButton}>
           <UserPlus size={16} color={COLORS.white} />

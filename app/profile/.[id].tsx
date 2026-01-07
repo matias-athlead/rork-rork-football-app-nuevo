@@ -89,7 +89,7 @@ export default function ProfileDetailScreen() {
           <Text style={[styles.username, { color: theme.text }]}>{user.fullName}</Text>
           <Text style={[styles.handle, { color: theme.textSecondary }]}>@{user.username}</Text>
           <Text style={[styles.role, { color: theme.textSecondary }]}>
-            {user.role.toUpperCase()}
+            {user.role ? user.role.toUpperCase() : 'USER'}
           </Text>
 
           {user.bio && (

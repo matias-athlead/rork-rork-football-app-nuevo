@@ -107,7 +107,7 @@ export default function ProfileScreen() {
         <View style={styles.bioSection}>
           <Text style={[styles.displayName, { color: theme.text }]}>{user.username}</Text>
           <Text style={[styles.role, { color: theme.textSecondary }]}>
-            {user.role.toUpperCase()}
+            {user.role ? user.role.toUpperCase() : 'USER'}
           </Text>
           {user.bio && (
             <Text style={[styles.bio, { color: theme.text }]}>{user.bio}</Text>
