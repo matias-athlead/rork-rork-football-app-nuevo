@@ -1,34 +1,64 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag, MapPin, Music, Users } from 'lucide-react-native';
+import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_POSTS } from '@/src/services/mockData';
+import { MOCK_POSTS, MOCK_USERS } from '@/src/services/mockData';
 import { Post } from '@/src/types/Post';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import VideoPlayer from '@/src/components/VideoPlayer';
+import { useAuth } from '@/src/hooks/useAuth';
+
+const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
+const FOLLOWED_USERS_KEY = '@athlead_followed_users';
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
+  const [followedUsers, setFollowedUsers] = useState<string[]>([]);
+  const [showLongPressMenu, setShowLongPressMenu] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const panX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
   const POSTS_STORAGE_KEY = '@athlead_user_posts';
+  const lastTapMap = useRef<{[key: string]: number}>({});
+  const likeAnimationMap = useRef<{[key: string]: Animated.Value}>({});
 
   const viewabilityConfig: ViewabilityConfig = {
     itemVisiblePercentThreshold: 50,
   };
+
+  useEffect(() => {
+    const loadFollowedUsers = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(FOLLOWED_USERS_KEY);
+        if (stored) {
+          setFollowedUsers(JSON.parse(stored));
+        } else {
+          const randomFollowed = MOCK_USERS.slice(0, 15).map(u => u.id);
+          setFollowedUsers(randomFollowed);
+          await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(randomFollowed));
+        }
+      } catch (error) {
+        console.log('Error loading followed users:', error);
+      }
+    };
+    loadFollowedUsers();
+  }, []);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     const visibleIds = viewableItems.map(item => item.item.id);
@@ -167,10 +197,11 @@ export default function HomeScreen() {
     ));
   };
 
-  const handleShare = async (post: Post) => {
+  const handleShareOutside = async (post: Post) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    setShowLongPressMenu(false);
     try {
       if (Platform.OS === 'web') {
         if (navigator.share) {
@@ -196,6 +227,165 @@ export default function HomeScreen() {
     }
   };
 
+  const handleRepost = async (post: Post) => {
+    if (!user) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowLongPressMenu(false);
+
+    try {
+      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      const reposts = existingReposts ? JSON.parse(existingReposts) : {};
+      
+      if (!reposts[user.id]) {
+        reposts[user.id] = [];
+      }
+
+      const repost = {
+        ...post,
+        id: `repost_${Date.now()}`,
+        originalPostId: post.id,
+        repostedBy: user.id,
+        repostedByUsername: user.username,
+        repostedAt: new Date().toISOString(),
+      };
+
+      reposts[user.id].unshift(repost);
+      await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      Alert.alert('Success', 'Post reposted to your profile!');
+    } catch (error) {
+      console.log('Error reposting:', error);
+      Alert.alert('Error', 'Failed to repost');
+    }
+  };
+
+  const handleReport = (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowLongPressMenu(false);
+    Alert.alert(
+      'Report Post',
+      'Why are you reporting this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Spam',
+          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
+        },
+        {
+          text: 'Inappropriate Content',
+          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
+        },
+        {
+          text: 'False Information',
+          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
+        },
+      ]
+    );
+  };
+
+  const handleBlockUser = (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+    setShowLongPressMenu(false);
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block @${post.username}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            Alert.alert('Blocked', `You have blocked @${post.username}`);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSendToUsers = (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSelectedPost(post);
+    setShowSendModal(true);
+  };
+
+  const handleToggleUserSelection = (userId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSelectedUsers(prev => 
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleConfirmSend = () => {
+    if (selectedUsers.length === 0) {
+      Alert.alert('Error', 'Please select at least one user');
+      return;
+    }
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    Alert.alert('Sent!', `Post sent to ${selectedUsers.length} user${selectedUsers.length > 1 ? 's' : ''}`);
+    setShowSendModal(false);
+    setSelectedUsers([]);
+    setSelectedPost(null);
+  };
+
+  const handleDoubleTap = (postId: string) => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    const lastTap = lastTapMap.current[postId] || 0;
+
+    if (now - lastTap < DOUBLE_TAP_DELAY) {
+      const post = posts.find(p => p.id === postId);
+      if (post && !post.isLiked) {
+        handleLike(postId);
+        
+        if (!likeAnimationMap.current[postId]) {
+          likeAnimationMap.current[postId] = new Animated.Value(0);
+        }
+        const anim = likeAnimationMap.current[postId];
+        
+        Animated.sequence([
+          Animated.spring(anim, {
+            toValue: 1,
+            useNativeDriver: true,
+            friction: 3,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 300,
+            delay: 400,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    }
+    lastTapMap.current[postId] = now;
+  };
+
+  const handleLongPress = (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    setSelectedPost(post);
+    setShowLongPressMenu(true);
+  };
+
   const renderPost = ({ item }: { item: Post }) => {
     const metadataItems = [];
     if (item.location) metadataItems.push({ type: 'location', content: item.location });
@@ -208,6 +398,11 @@ export default function HomeScreen() {
     const metadataIndex = metadataIndexMap[item.id] || 0;
     const currentMetadata = metadataItems[metadataIndex % metadataItems.length];
     const isVisible = visiblePostIds.includes(item.id);
+
+    if (!likeAnimationMap.current[item.id]) {
+      likeAnimationMap.current[item.id] = new Animated.Value(0);
+    }
+    const likeAnim = likeAnimationMap.current[item.id];
 
     return (
     <View style={[styles.postCard, { backgroundColor: theme.card }]}>
@@ -222,28 +417,49 @@ export default function HomeScreen() {
         </Pressable>
       </Pressable>
 
-      <View style={styles.videoWrapper}>
-        <VideoPlayer
-          uri={item.videoUrl}
-          style={styles.postImage}
-          autoPlay={false}
-          loop={true}
-          showControls={true}
-          forceMute={!!(item as any).musicUrl}
-          isVisible={isVisible}
-        />
-        
-        {currentMetadata && (
-          <View style={styles.metadataOverlay}>
-            <View style={styles.overlayItemSingle}>
-              {currentMetadata.type === 'location' && <MapPin size={14} color={COLORS.white} />}
-              {currentMetadata.type === 'music' && <Music size={14} color={COLORS.white} />}
-              {currentMetadata.type === 'club' && <Users size={14} color={COLORS.white} />}
-              <Text style={styles.overlayText} numberOfLines={1}>{currentMetadata.content}</Text>
+      <Pressable 
+        onPress={() => handleDoubleTap(item.id)}
+        onLongPress={() => handleLongPress(item)}
+        delayLongPress={500}
+      >
+        <View style={styles.videoWrapper}>
+          <VideoPlayer
+            uri={item.videoUrl}
+            style={styles.postImage}
+            autoPlay={false}
+            loop={true}
+            showControls={true}
+            forceMute={!!(item as any).musicUrl}
+            isVisible={isVisible}
+          />
+          
+          {currentMetadata && (
+            <View style={styles.metadataOverlay}>
+              <View style={styles.overlayItemSingle}>
+                {currentMetadata.type === 'location' && <MapPin size={14} color={COLORS.white} />}
+                {currentMetadata.type === 'music' && <Music size={14} color={COLORS.white} />}
+                {currentMetadata.type === 'club' && <Users size={14} color={COLORS.white} />}
+                <Text style={styles.overlayText} numberOfLines={1}>{currentMetadata.content}</Text>
+              </View>
             </View>
-          </View>
-        )}
-      </View>
+          )}
+
+          <Animated.View 
+            style={[styles.likeAnimationContainer, {
+              opacity: likeAnim,
+              transform: [{
+                scale: likeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.5, 1.2],
+                }),
+              }],
+            }]}
+            pointerEvents="none"
+          >
+            <Heart size={80} color={COLORS.white} fill={COLORS.white} />
+          </Animated.View>
+        </View>
+      </Pressable>
 
       <View style={styles.postActions}>
         <View style={styles.leftActions}>
@@ -264,8 +480,8 @@ export default function HomeScreen() {
               fill={item.isVoted ? COLORS.skyBlue : 'transparent'}
             />
           </Pressable>
-          <Pressable onPress={() => handleShare(item)} style={styles.actionBtn}>
-            <Share2 size={26} color={theme.text} />
+          <Pressable onPress={() => handleSendToUsers(item)} style={styles.actionBtn}>
+            <Send size={26} color={theme.text} />
           </Pressable>
         </View>
       </View>
@@ -294,7 +510,7 @@ export default function HomeScreen() {
   };
 
   const filteredPosts = activeTab === 'following' 
-    ? posts.filter(p => Math.random() > 0.5)
+    ? posts.filter(p => followedUsers.includes(p.userId))
     : posts;
 
   return (
@@ -331,22 +547,20 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.feedWrapper}>
-        {activeTab === 'forYou' && (
-          <Animated.View
-            style={[
-              styles.swipeIndicator,
-              {
-                opacity,
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <View style={[styles.swipeIndicatorContent, { backgroundColor: theme.card }]}>
-              <Send size={24} color={COLORS.skyBlue} />
-              <Text style={[styles.swipeIndicatorText, { color: theme.text }]}>Messages</Text>
-            </View>
-          </Animated.View>
-        )}
+        <Animated.View
+          style={[
+            styles.swipeIndicator,
+            {
+              opacity,
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={[styles.swipeIndicatorContent, { backgroundColor: theme.card }]}>
+            <Send size={24} color={COLORS.skyBlue} />
+            <Text style={[styles.swipeIndicatorText, { color: theme.text }]}>Messages</Text>
+          </View>
+        </Animated.View>
         <Animated.View
           style={[
             styles.feedContainer,
@@ -354,7 +568,7 @@ export default function HomeScreen() {
               transform: [{ translateX: panX }],
             },
           ]}
-          {...(activeTab === 'forYou' ? panResponder.panHandlers : {})}
+          {...panResponder.panHandlers}
         >
           <FlatList
           data={filteredPosts}
@@ -368,6 +582,114 @@ export default function HomeScreen() {
           />
         </Animated.View>
       </View>
+
+      <Modal
+        visible={showLongPressMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLongPressMenu(false)}
+      >
+        <Pressable style={styles.longPressOverlay} onPress={() => setShowLongPressMenu(false)}>
+          <View style={[styles.longPressMenu, { backgroundColor: theme.card }]}>
+            <Pressable 
+              onPress={() => selectedPost && handleRepost(selectedPost)} 
+              style={styles.longPressItem}
+            >
+              <Repeat2 size={24} color={theme.text} />
+              <Text style={[styles.longPressText, { color: theme.text }]}>Repost</Text>
+            </Pressable>
+            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
+            <Pressable 
+              onPress={() => selectedPost && handleReport(selectedPost)} 
+              style={styles.longPressItem}
+            >
+              <Flag size={24} color={theme.text} />
+              <Text style={[styles.longPressText, { color: theme.text }]}>Report</Text>
+            </Pressable>
+            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
+            <Pressable 
+              onPress={() => selectedPost && handleShareOutside(selectedPost)} 
+              style={styles.longPressItem}
+            >
+              <Share size={24} color={theme.text} />
+              <Text style={[styles.longPressText, { color: theme.text }]}>Share Outside App</Text>
+            </Pressable>
+            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
+            <Pressable 
+              onPress={() => selectedPost && handleBlockUser(selectedPost)} 
+              style={styles.longPressItem}
+            >
+              <UserX size={24} color={COLORS.error} />
+              <Text style={[styles.longPressText, { color: COLORS.error }]}>Block User</Text>
+            </Pressable>
+            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => setShowLongPressMenu(false)} style={styles.longPressItem}>
+              <Text style={[styles.longPressText, { color: theme.textSecondary }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showSendModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowSendModal(false);
+          setSelectedUsers([]);
+          setSelectedPost(null);
+        }}
+      >
+        <View style={styles.sendModalOverlay}>
+          <View style={[styles.sendModalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.sendModalHeader}>
+              <Text style={[styles.sendModalTitle, { color: theme.text }]}>Send to</Text>
+              <Pressable onPress={() => {
+                setShowSendModal(false);
+                setSelectedUsers([]);
+                setSelectedPost(null);
+              }}>
+                <Text style={[styles.sendModalCancel, { color: COLORS.skyBlue }]}>Cancel</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.sendModalUserList}>
+              {MOCK_USERS.slice(0, 15).map((mockUser) => {
+                const isSelected = selectedUsers.includes(mockUser.id);
+                return (
+                  <Pressable
+                    key={mockUser.id}
+                    onPress={() => handleToggleUserSelection(mockUser.id)}
+                    style={[styles.sendModalUserItem, { backgroundColor: isSelected ? `${COLORS.skyBlue}20` : 'transparent' }]}
+                  >
+                    <Image source={{ uri: mockUser.profilePhoto }} style={styles.sendModalAvatar} />
+                    <View style={styles.sendModalUserInfo}>
+                      <Text style={[styles.sendModalUsername, { color: theme.text }]}>{mockUser.username}</Text>
+                      <Text style={[styles.sendModalFullName, { color: theme.textSecondary }]}>{mockUser.fullName}</Text>
+                    </View>
+                    <View style={[styles.sendModalCheckbox, { 
+                      borderColor: isSelected ? COLORS.skyBlue : theme.border, 
+                      backgroundColor: isSelected ? COLORS.skyBlue : 'transparent' 
+                    }]}>
+                      {isSelected && <Text style={styles.sendModalCheck}>✓</Text>}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <Pressable
+              onPress={handleConfirmSend}
+              style={[styles.sendModalButton, { 
+                backgroundColor: selectedUsers.length > 0 ? COLORS.skyBlue : theme.border 
+              }]}
+              disabled={selectedUsers.length === 0}
+            >
+              <Text style={[styles.sendModalButtonText, { 
+                color: selectedUsers.length > 0 ? COLORS.white : theme.textSecondary 
+              }]}>Send to {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -558,5 +880,121 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: 4,
+  },
+  likeAnimationContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -40,
+    marginTop: -40,
+    pointerEvents: 'none',
+  },
+  longPressOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  longPressMenu: {
+    width: '85%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  longPressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  longPressText: {
+    fontSize: 17,
+    fontWeight: '500',
+  },
+  longPressSeparator: {
+    height: 1,
+    marginLeft: 60,
+  },
+  sendModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sendModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    maxHeight: '80%',
+  },
+  sendModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  sendModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  sendModalCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  sendModalUserList: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  sendModalUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 8,
+    gap: 12,
+  },
+  sendModalAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  sendModalUserInfo: {
+    flex: 1,
+  },
+  sendModalUsername: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  sendModalFullName: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  sendModalCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendModalCheck: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sendModalButton: {
+    marginHorizontal: 20,
+    marginVertical: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  sendModalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
