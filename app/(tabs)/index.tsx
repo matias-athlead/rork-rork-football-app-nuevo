@@ -460,6 +460,32 @@ export default function HomeScreen() {
     setShowLongPressMenu(true);
   };
 
+  const handleFollowToggle = async (userId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    try {
+      const isFollowing = followedUsers.includes(userId);
+      let updatedFollowedUsers: string[];
+      
+      if (isFollowing) {
+        updatedFollowedUsers = followedUsers.filter(id => id !== userId);
+      } else {
+        updatedFollowedUsers = [...followedUsers, userId];
+      }
+      
+      setFollowedUsers(updatedFollowedUsers);
+      await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(updatedFollowedUsers));
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.log('Error toggling follow:', error);
+    }
+  };
+
   const renderPost = ({ item }: { item: Post }) => {
     const metadataItems = [];
     if (item.location) metadataItems.push({ type: 'location', content: item.location });
@@ -489,16 +515,27 @@ export default function HomeScreen() {
           </Text>
         </View>
       )}
-      <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeader}>
-        <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
-        <View style={styles.postHeaderInfo}>
-          <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
-          <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole ? item.userRole.toUpperCase() : 'USER'}</Text>
-        </View>
-        <Pressable style={styles.followButton}>
-          <UserPlus size={16} color={COLORS.white} />
+      <View style={styles.postHeader}>
+        <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeaderUser}>
+          <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
+          <View style={styles.postHeaderInfo}>
+            <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
+            <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole ? item.userRole.toUpperCase() : 'USER'}</Text>
+          </View>
         </Pressable>
-      </Pressable>
+        <Pressable 
+          onPress={() => handleFollowToggle(item.userId)}
+          style={[styles.followButton, { 
+            backgroundColor: followedUsers.includes(item.userId) ? theme.border : COLORS.skyBlue 
+          }]}
+        >
+          {followedUsers.includes(item.userId) ? (
+            <Text style={[styles.followButtonText, { color: theme.text }]}>Following</Text>
+          ) : (
+            <UserPlus size={16} color={COLORS.white} />
+          )}
+        </Pressable>
+      </View>
 
       <Pressable 
         onPress={() => handleDoubleTap(item.id)}
@@ -953,7 +990,13 @@ const styles = StyleSheet.create({
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 12,
+  },
+  postHeaderUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   postAvatar: {
     width: 40,
@@ -973,10 +1016,16 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   followButton: {
-    backgroundColor: COLORS.skyBlue,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   videoWrapper: {
     position: 'relative',
