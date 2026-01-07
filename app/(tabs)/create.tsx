@@ -2,14 +2,15 @@ import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users, Volume2, VolumeX } from 'lucide-react-native';
 import { Image } from 'expo-image';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MOCK_USERS } from '@/src/services/mockData';
+import { MUSIC_LIBRARY, MusicTrack } from '@/src/services/musicLibrary';
 
 type AspectRatio = '3:4' | '4:5' | 'original';
 
@@ -33,10 +34,16 @@ export default function CreateScreen() {
   const captionInputRef = useRef<TextInput>(null);
   const [location, setLocation] = useState('');
   const [musicSound, setMusicSound] = useState('');
+  const [selectedMusic, setSelectedMusic] = useState<MusicTrack | null>(null);
   const [clubTag, setClubTag] = useState('');
   const [showClubModal, setShowClubModal] = useState(false);
   const [clubSearch, setClubSearch] = useState('');
   const clubInputRef = useRef<TextInput>(null);
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const [musicSearch, setMusicSearch] = useState('');
+  const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
+  const [isPlayingMusic, setIsPlayingMusic] = useState(false);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
@@ -92,6 +99,13 @@ export default function CreateScreen() {
       return;
     }
 
+    if (audioSound) {
+      await audioSound.stopAsync();
+      await audioSound.unloadAsync();
+      setAudioSound(null);
+      setIsPlayingMusic(false);
+    }
+
     setIsUploading(true);
     try {
       const existingPosts = await AsyncStorage.getItem(POSTS_STORAGE_KEY);
@@ -107,13 +121,17 @@ export default function CreateScreen() {
         username: user.username,
         userPhoto: user.profilePhoto,
         videoUrl: selectedMedia,
-        thumbnailUrl: selectedMedia,
+        thumbnailUrl: coverImage || selectedMedia,
+        coverImageUrl: coverImage || undefined,
         caption: caption || 'New post',
         aspectRatio,
         mediaType,
         taggedUsers: mentionedUsers,
         location: location || undefined,
-        musicSound: musicSound || undefined,
+        musicSound: selectedMusic?.title || musicSound || undefined,
+        musicUrl: selectedMusic?.url || undefined,
+        musicTitle: selectedMusic?.title || undefined,
+        musicArtist: selectedMusic?.artist || undefined,
         clubTag: clubTag || undefined,
         createdAt: new Date().toISOString(),
       };
@@ -129,7 +147,9 @@ export default function CreateScreen() {
       setMentionedUsers([]);
       setLocation('');
       setMusicSound('');
+      setSelectedMusic(null);
       setClubTag('');
+      setCoverImage(null);
       router.back();
     } catch {
       Alert.alert('Error', 'Failed to save post');
@@ -210,6 +230,72 @@ export default function CreateScreen() {
       }
     }
   };
+
+  const handleSelectCover = async () => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 5],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setCoverImage(result.assets[0].uri);
+    }
+  };
+
+  const handleSelectMusic = async (track: MusicTrack) => {
+    if (audioSound) {
+      await audioSound.stopAsync();
+      await audioSound.unloadAsync();
+    }
+
+    setSelectedMusic(track);
+    setMusicSound(track.title);
+    setShowMusicModal(false);
+
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: track.url },
+        { shouldPlay: true, isLooping: true }
+      );
+      setAudioSound(sound);
+      setIsPlayingMusic(true);
+    } catch (error) {
+      console.log('Error playing music:', error);
+    }
+  };
+
+  const toggleMusicPlayback = async () => {
+    if (!audioSound) return;
+
+    if (isPlayingMusic) {
+      await audioSound.pauseAsync();
+      setIsPlayingMusic(false);
+    } else {
+      await audioSound.playAsync();
+      setIsPlayingMusic(true);
+    }
+  };
+
+  const removeMusicSelection = async () => {
+    if (audioSound) {
+      await audioSound.stopAsync();
+      await audioSound.unloadAsync();
+    }
+    setSelectedMusic(null);
+    setMusicSound('');
+    setAudioSound(null);
+    setIsPlayingMusic(false);
+  };
+
+  const filteredMusic = MUSIC_LIBRARY.filter(track => 
+    track.title.toLowerCase().includes(musicSearch.toLowerCase()) ||
+    track.artist.toLowerCase().includes(musicSearch.toLowerCase())
+  );
 
   const aspectRatios: AspectRatio[] = ['3:4', '4:5', 'original'];
 
@@ -368,6 +454,29 @@ export default function CreateScreen() {
               )}
             </View>
 
+            <View style={[styles.coverSection, { backgroundColor: theme.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Cover Image</Text>
+              {coverImage ? (
+                <View>
+                  <Image source={{ uri: coverImage }} style={styles.coverPreview} contentFit="cover" />
+                  <Pressable
+                    onPress={handleSelectCover}
+                    style={[styles.changeCoverButton, { backgroundColor: theme.inputBackground }]}
+                  >
+                    <Text style={[styles.changeCoverText, { color: theme.text }]}>Change Cover</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={handleSelectCover}
+                  style={[styles.selectCoverButton, { backgroundColor: theme.inputBackground }]}
+                >
+                  <ImageIcon size={24} color={theme.textSecondary} />
+                  <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Select Cover Image</Text>
+                </Pressable>
+              )}
+            </View>
+
             <View style={[styles.metadataSection, { backgroundColor: theme.card }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Additional Details</Text>
               
@@ -390,13 +499,40 @@ export default function CreateScreen() {
                   <Music size={20} color={COLORS.skyBlue} />
                   <Text style={[styles.metadataLabel, { color: theme.text }]}>Music/Sound</Text>
                 </View>
-                <TextInput
-                  style={[styles.metadataInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
-                  placeholder="Add music or sound..."
-                  placeholderTextColor={theme.textSecondary}
-                  value={musicSound}
-                  onChangeText={setMusicSound}
-                />
+                {selectedMusic ? (
+                  <View style={[styles.selectedMusicContainer, { backgroundColor: theme.inputBackground }]}>
+                    <View style={styles.selectedMusicInfo}>
+                      <Text style={[styles.selectedMusicTitle, { color: theme.text }]} numberOfLines={1}>
+                        {selectedMusic.title}
+                      </Text>
+                      <Text style={[styles.selectedMusicArtist, { color: theme.textSecondary }]} numberOfLines={1}>
+                        {selectedMusic.artist}
+                      </Text>
+                    </View>
+                    <View style={styles.musicControls}>
+                      <Pressable onPress={toggleMusicPlayback} style={styles.musicControlButton}>
+                        {isPlayingMusic ? (
+                          <VolumeX size={20} color={COLORS.skyBlue} />
+                        ) : (
+                          <Volume2 size={20} color={COLORS.skyBlue} />
+                        )}
+                      </Pressable>
+                      <Pressable onPress={removeMusicSelection} style={styles.musicControlButton}>
+                        <X size={20} color={theme.textSecondary} />
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => {
+                      setMusicSearch('');
+                      setShowMusicModal(true);
+                    }}
+                    style={[styles.selectMusicButton, { backgroundColor: theme.inputBackground }]}
+                  >
+                    <Text style={[styles.selectMusicText, { color: theme.textSecondary }]}>Select music...</Text>
+                  </Pressable>
+                )}
               </View>
 
               <View style={styles.metadataItem}>
@@ -522,6 +658,53 @@ export default function CreateScreen() {
                 <Text style={[styles.noResults, { color: theme.textSecondary }]}>
                   {clubUsers.length === 0 ? 'No clubs available' : 'No clubs found'}
                 </Text>
+              }
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showMusicModal} transparent animationType="slide">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowMusicModal(false)}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]} onStartShouldSetResponder={() => true}>
+            <View style={styles.clubModalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Music</Text>
+              <Pressable onPress={() => setShowMusicModal(false)}>
+                <X size={24} color={theme.text} />
+              </Pressable>
+            </View>
+            <TextInput
+              style={[styles.searchInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
+              placeholder="Search music..."
+              placeholderTextColor={theme.textSecondary}
+              value={musicSearch}
+              onChangeText={setMusicSearch}
+              autoFocus
+            />
+            <FlatList
+              data={filteredMusic}
+              keyExtractor={(item) => item.id}
+              style={styles.musicList}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => handleSelectMusic(item)}
+                  style={[styles.musicItem, { backgroundColor: theme.inputBackground }]}
+                >
+                  <View style={[styles.musicIconContainer, { backgroundColor: COLORS.skyBlue }]}>
+                    <Music size={20} color={COLORS.white} />
+                  </View>
+                  <View style={styles.musicItemInfo}>
+                    <Text style={[styles.musicItemTitle, { color: theme.text }]} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={[styles.musicItemArtist, { color: theme.textSecondary }]} numberOfLines={1}>
+                      {item.artist} • {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+                    </Text>
+                  </View>
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={[styles.noResults, { color: theme.textSecondary }]}>No music found</Text>
               }
             />
           </View>
@@ -863,6 +1046,104 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   clubFullName: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  coverSection: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  coverPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  changeCoverButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  changeCoverText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  selectCoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    borderRadius: 12,
+    gap: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(128, 128, 128, 0.3)',
+  },
+  selectCoverText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  selectedMusicContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 12,
+  },
+  selectedMusicInfo: {
+    flex: 1,
+  },
+  selectedMusicTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  selectedMusicArtist: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  musicControls: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  musicControlButton: {
+    padding: 4,
+  },
+  selectMusicButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  selectMusicText: {
+    fontSize: 15,
+  },
+  musicList: {
+    maxHeight: 400,
+  },
+  musicItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  musicIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  musicItemInfo: {
+    flex: 1,
+  },
+  musicItemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  musicItemArtist: {
     fontSize: 13,
     marginTop: 2,
   },

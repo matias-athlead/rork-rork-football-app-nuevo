@@ -8,6 +8,7 @@ export interface Post {
   userRole: 'player' | 'coach' | 'club';
   videoUrl: string;
   thumbnailUrl: string;
+  coverImageUrl?: string;
   caption: string;
   hashtags: string[];
   taggedUsers: string[];
@@ -21,7 +22,12 @@ export interface Post {
   createdAt: string;
   location?: string;
   musicSound?: string;
+  musicUrl?: string;
+  musicTitle?: string;
+  musicArtist?: string;
   clubTag?: string;
+  aspectRatio?: string;
+  mediaType?: string;
 }
 
 export interface Comment {

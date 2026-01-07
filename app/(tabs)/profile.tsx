@@ -182,7 +182,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push(`/post/${post.id}` as any)}
               >
                 <Image
-                  source={{ uri: post.thumbnailUrl }}
+                  source={{ uri: post.coverImageUrl || post.thumbnailUrl }}
                   style={styles.postImage}
                   contentFit="cover"
                 />

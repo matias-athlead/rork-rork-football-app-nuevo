@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform, Animated, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, Share2, UserX, MapPin, Music, Users } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, Share2, UserX, MapPin, Music, Users, Heart } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -10,6 +10,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import VideoPlayer from '@/src/components/VideoPlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
@@ -21,6 +22,12 @@ export default function PostDetailScreen() {
   const [post, setPost] = useState<any>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
+  const lastTap = useRef<number>(0);
+  const likeAnimation = useRef(new Animated.Value(0)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const loadPost = useCallback(async () => {
     try {
@@ -37,26 +44,59 @@ export default function PostDetailScreen() {
         
         if (foundPost) {
           setPost(foundPost);
+          setIsLiked(foundPost.isLiked || false);
+          setLikeCount(foundPost.likes || 0);
         } else {
           const mockPost = MOCK_POSTS.find(p => p.id === id);
           setPost(mockPost || MOCK_POSTS[0]);
         }
       } else {
         const mockPost = MOCK_POSTS.find(p => p.id === id);
-        setPost(mockPost || MOCK_POSTS[0]);
+        const postToSet = mockPost || MOCK_POSTS[0];
+        setPost(postToSet);
+        setIsLiked(postToSet?.isLiked || false);
+        setLikeCount(postToSet?.likes || 0);
       }
     } catch (error) {
       console.log('Error loading post:', error);
       const mockPost = MOCK_POSTS.find(p => p.id === id);
-      setPost(mockPost || MOCK_POSTS[0]);
+      const postToSet = mockPost || MOCK_POSTS[0];
+      setPost(postToSet);
+      setIsLiked(postToSet?.isLiked || false);
+      setLikeCount(postToSet?.likes || 0);
     } finally {
       setIsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
+    return () => {
+      if (audioSound) {
+        audioSound.unloadAsync();
+      }
+    };
+  }, [audioSound]);
+
+  useEffect(() => {
     loadPost();
   }, [loadPost]);
+
+  useEffect(() => {
+    const playMusic = async () => {
+      if (post?.musicUrl) {
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: post.musicUrl },
+            { shouldPlay: true, isLooping: true, volume: 0.5 }
+          );
+          setAudioSound(sound);
+        } catch (error) {
+          console.log('Error playing music:', error);
+        }
+      }
+    };
+    playMusic();
+  }, [post?.musicUrl]);
 
   const isOwnPost = user?.id === post?.userId;
 
@@ -166,6 +206,62 @@ export default function PostDetailScreen() {
     router.push(`/edit-post/${id}` as any);
   };
 
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+
+    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
+      if (!isLiked) {
+        setIsLiked(true);
+        setLikeCount(prev => prev + 1);
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+
+        Animated.sequence([
+          Animated.spring(likeAnimation, {
+            toValue: 1,
+            useNativeDriver: true,
+            friction: 3,
+          }),
+          Animated.timing(likeAnimation, {
+            toValue: 0,
+            duration: 300,
+            delay: 400,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    }
+    lastTap.current = now;
+  };
+
+  const handleLocationPress = async () => {
+    if (!post?.location) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    const location = encodeURIComponent(post.location);
+    const url = Platform.select({
+      ios: `maps://app?q=${location}`,
+      android: `geo:0,0?q=${location}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${location}`,
+    }) as string;
+
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else if (Platform.OS !== 'web') {
+        const webUrl = `https://www.google.com/maps/search/?api=1&query=${location}`;
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.log('Error opening maps:', error);
+    }
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -206,22 +302,63 @@ export default function PostDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView>
-        {post.mediaType === 'video' || post.videoUrl ? (
-          <VideoPlayer
-            uri={post.videoUrl}
-            style={styles.video}
-            autoPlay={true}
-            loop={true}
-            showControls={true}
-          />
-        ) : (
-          <Image
-            source={{ uri: post.thumbnailUrl || post.videoUrl }}
-            style={styles.video}
-            contentFit="cover"
-          />
-        )}
+      <ScrollView ref={scrollViewRef}>
+        <Pressable onPress={handleDoubleTap} style={styles.videoContainer}>
+          {post.mediaType === 'video' || post.videoUrl ? (
+            <VideoPlayer
+              uri={post.videoUrl}
+              style={styles.video}
+              autoPlay={true}
+              loop={true}
+              showControls={true}
+            />
+          ) : (
+            <Image
+              source={{ uri: post.thumbnailUrl || post.videoUrl }}
+              style={styles.video}
+              contentFit="cover"
+            />
+          )}
+          
+          {(post.location || post.musicTitle || post.clubTag) && (
+            <View style={styles.metadataOverlay}>
+              {post.location && (
+                <Pressable onPress={handleLocationPress} style={styles.overlayItem}>
+                  <MapPin size={14} color={COLORS.white} />
+                  <Text style={styles.overlayText} numberOfLines={1}>{post.location}</Text>
+                </Pressable>
+              )}
+              {post.musicTitle && (
+                <View style={styles.overlayItem}>
+                  <Music size={14} color={COLORS.white} />
+                  <Text style={styles.overlayText} numberOfLines={1}>
+                    {post.musicTitle} {post.musicArtist ? `• ${post.musicArtist}` : ''}
+                  </Text>
+                </View>
+              )}
+              {post.clubTag && (
+                <View style={styles.overlayItem}>
+                  <Users size={14} color={COLORS.white} />
+                  <Text style={styles.overlayText} numberOfLines={1}>@{post.clubTag}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <Animated.View 
+            style={[styles.likeAnimationContainer, {
+              opacity: likeAnimation,
+              transform: [{
+                scale: likeAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.5, 1.2],
+                }),
+              }],
+            }]}
+          >
+            <Heart size={80} color={COLORS.white} fill={COLORS.white} />
+          </Animated.View>
+        </Pressable>
         
         <View style={styles.content}>
           <View style={styles.userInfo}>
@@ -257,33 +394,21 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {(post.location || post.musicSound || post.clubTag) && (
-            <View style={styles.metadataSection}>
-              {post.location && (
-                <View style={styles.metadataItem}>
-                  <MapPin size={18} color={COLORS.skyBlue} />
-                  <Text style={[styles.metadataText, { color: theme.text }]}>{post.location}</Text>
-                </View>
-              )}
-              {post.musicSound && (
-                <View style={styles.metadataItem}>
-                  <Music size={18} color={COLORS.skyBlue} />
-                  <Text style={[styles.metadataText, { color: theme.text }]}>{post.musicSound}</Text>
-                </View>
-              )}
-              {post.clubTag && (
-                <View style={styles.metadataItem}>
-                  <Users size={18} color={COLORS.skyBlue} />
-                  <Text style={[styles.metadataText, { color: COLORS.skyBlue }]}>@{post.clubTag}</Text>
-                </View>
-              )}
-            </View>
-          )}
-
           <View style={styles.stats}>
-            <Text style={[styles.statText, { color: theme.textSecondary }]}>
-              {post.likes || 0} likes
-            </Text>
+            <Pressable onPress={() => {
+              setIsLiked(!isLiked);
+              setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+            }}>
+              <View style={styles.likeButton}>
+                <Heart size={18} color={isLiked ? COLORS.error : theme.textSecondary} fill={isLiked ? COLORS.error : 'none'} />
+                <Text style={[styles.statText, { color: theme.textSecondary }]}>
+                  {likeCount} likes
+                </Text>
+              </View>
+            </Pressable>
             <Text style={[styles.statText, { color: theme.textSecondary }]}>
               {post.comments || 0} comments
             </Text>
@@ -374,9 +499,41 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  videoContainer: {
+    position: 'relative',
+  },
   video: {
     width: '100%',
     height: 400,
+  },
+  metadataOverlay: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  overlayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  overlayText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  likeAnimationContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -40,
+    marginTop: -40,
+    pointerEvents: 'none',
   },
   loadingContainer: {
     flex: 1,
@@ -428,6 +585,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(128, 128, 128, 0.2)',
     marginTop: 12,
+    alignItems: 'center',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   statText: {
     fontSize: 14,
