@@ -30,7 +30,6 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isHolding, setIsHolding] = useState(false);
-  const [wasPlayingBeforeHold, setWasPlayingBeforeHold] = useState(false);
   const videoRef = useRef<Video>(null);
 
   useEffect(() => {
@@ -40,13 +39,20 @@ export default function VideoPlayer({
   }, [forceMute]);
 
   useEffect(() => {
-    if (!isVisible || !isFocused) {
-      if (isPlaying) {
-        videoRef.current?.pauseAsync();
+    const handleVisibility = async () => {
+      if (!videoRef.current) return;
+      
+      if (isVisible && isFocused && !isHolding) {
+        await videoRef.current.playAsync();
+        setIsPlaying(true);
+      } else {
+        await videoRef.current.pauseAsync();
         setIsPlaying(false);
       }
-    }
-  }, [isVisible, isFocused, isPlaying]);
+    };
+    
+    handleVisibility();
+  }, [isVisible, isFocused, isHolding]);
 
   const handlePressIn = async () => {
     if (!videoRef.current) return;
@@ -54,17 +60,16 @@ export default function VideoPlayer({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setIsHolding(true);
-    setWasPlayingBeforeHold(isPlaying);
-    if (isPlaying) {
-      await videoRef.current.pauseAsync();
-    }
+    await videoRef.current.pauseAsync();
+    setIsPlaying(false);
   };
 
   const handlePressOut = async () => {
     if (!videoRef.current) return;
     setIsHolding(false);
-    if (wasPlayingBeforeHold) {
+    if (isVisible && isFocused) {
       await videoRef.current.playAsync();
+      setIsPlaying(true);
     }
   };
 
