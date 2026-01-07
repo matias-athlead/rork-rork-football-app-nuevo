@@ -33,11 +33,15 @@ export default function VideoPlayer({
   const [hasError, setHasError] = useState(false);
   const videoRef = useRef<Video>(null);
   const isMounted = useRef(true);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
     };
   }, []);
 
@@ -81,27 +85,38 @@ export default function VideoPlayer({
 
   const handlePressIn = async () => {
     if (!videoRef.current || hasError) return;
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setIsHolding(true);
     
-    try {
-      if (Platform.OS === 'web') {
-        (videoRef.current as any).pause();
-      } else {
-        await (videoRef.current as any).pauseAsync();
+    holdTimerRef.current = setTimeout(async () => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      setIsPlaying(false);
-    } catch (e) {
-      console.log('Video pause error:', e);
-    }
+      setIsHolding(true);
+      
+      try {
+        if (Platform.OS === 'web') {
+          (videoRef.current as any).pause();
+        } else {
+          await (videoRef.current as any).pauseAsync();
+        }
+        setIsPlaying(false);
+      } catch (e) {
+        console.log('Video pause error:', e);
+      }
+    }, 800);
   };
 
   const handlePressOut = async () => {
     if (!videoRef.current || hasError) return;
+    
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    
+    const wasHolding = isHolding;
     setIsHolding(false);
-    if (isVisible && isFocused) {
+    
+    if (wasHolding && isVisible && isFocused) {
       try {
         if (Platform.OS === 'web') {
           await (videoRef.current as any).play();
@@ -167,15 +182,25 @@ export default function VideoPlayer({
         {showControls && (
           <Pressable 
             onPressIn={() => {
-              setIsHolding(true);
-              const video = videoRef.current as any;
-              if (video) video.pause();
-              setIsPlaying(false);
+              if (holdTimerRef.current) {
+                clearTimeout(holdTimerRef.current);
+              }
+              holdTimerRef.current = setTimeout(() => {
+                setIsHolding(true);
+                const video = videoRef.current as any;
+                if (video) video.pause();
+                setIsPlaying(false);
+              }, 800);
             }}
             onPressOut={() => {
+              if (holdTimerRef.current) {
+                clearTimeout(holdTimerRef.current);
+                holdTimerRef.current = null;
+              }
+              const wasHolding = isHolding;
               setIsHolding(false);
               const video = videoRef.current as any;
-              if (video && isVisible && isFocused) {
+              if (video && wasHolding && isVisible && isFocused) {
                 video.play();
                 setIsPlaying(true);
               }
