@@ -28,6 +28,11 @@ export interface Post {
   clubTag?: string;
   aspectRatio?: string;
   mediaType?: string;
+  originalPostId?: string;
+  repostedBy?: string;
+  repostedByUsername?: string;
+  repostedByPhoto?: string;
+  repostedAt?: string;
 }
 
 export interface Comment {

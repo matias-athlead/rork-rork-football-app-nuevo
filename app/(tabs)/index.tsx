@@ -28,6 +28,7 @@ export default function HomeScreen() {
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
   const [showLongPressMenu, setShowLongPressMenu] = useState(false);
+  const [userReposts, setUserReposts] = useState<{[key: string]: boolean}>({});
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -60,6 +61,28 @@ export default function HomeScreen() {
     };
     loadFollowedUsers();
   }, []);
+
+  useEffect(() => {
+    const loadUserReposts = async () => {
+      if (!user) return;
+      try {
+        const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+        if (existingReposts) {
+          const reposts = JSON.parse(existingReposts);
+          const userRepostsList = reposts[user.id] || [];
+          const repostMap: {[key: string]: boolean} = {};
+          userRepostsList.forEach((repost: any) => {
+            const originalId = repost.originalPostId || repost.id;
+            repostMap[originalId] = true;
+          });
+          setUserReposts(repostMap);
+        }
+      } catch (error) {
+        console.log('Error loading user reposts:', error);
+      }
+    };
+    loadUserReposts();
+  }, [user]);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     const visibleIds = viewableItems.map(item => item.item.id);
@@ -235,6 +258,8 @@ export default function HomeScreen() {
     }
     setShowLongPressMenu(false);
 
+    const originalPostId = post.originalPostId || post.id;
+
     try {
       const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
       const reposts = existingReposts ? JSON.parse(existingReposts) : {};
@@ -246,14 +271,19 @@ export default function HomeScreen() {
       const repost = {
         ...post,
         id: `repost_${Date.now()}`,
-        originalPostId: post.id,
+        originalPostId: originalPostId,
         repostedBy: user.id,
         repostedByUsername: user.username,
+        repostedByPhoto: user.profilePhoto,
         repostedAt: new Date().toISOString(),
       };
 
       reposts[user.id].unshift(repost);
       await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+
+      setUserReposts(prev => ({...prev, [originalPostId]: true}));
+
+      setPosts(prevPosts => [repost, ...prevPosts]);
 
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -262,6 +292,47 @@ export default function HomeScreen() {
     } catch (error) {
       console.log('Error reposting:', error);
       Alert.alert('Error', 'Failed to repost');
+    }
+  };
+
+  const handleRemoveRepost = async (post: Post) => {
+    if (!user) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowLongPressMenu(false);
+
+    const originalPostId = post.originalPostId || post.id;
+
+    try {
+      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      if (existingReposts) {
+        const reposts = JSON.parse(existingReposts);
+        if (reposts[user.id]) {
+          reposts[user.id] = reposts[user.id].filter(
+            (r: any) => (r.originalPostId || r.id) !== originalPostId
+          );
+          await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+          
+          setUserReposts(prev => {
+            const newReposts = {...prev};
+            delete newReposts[originalPostId];
+            return newReposts;
+          });
+
+          setPosts(prevPosts => prevPosts.filter(p => 
+            !(p.repostedBy === user.id && (p.originalPostId || p.id) === originalPostId)
+          ));
+
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          Alert.alert('Success', 'Repost removed from your profile!');
+        }
+      }
+    } catch (error) {
+      console.log('Error removing repost:', error);
+      Alert.alert('Error', 'Failed to remove repost');
     }
   };
 
@@ -401,6 +472,7 @@ export default function HomeScreen() {
     const metadataIndex = metadataIndexMap[item.id] || 0;
     const currentMetadata = metadataItems[metadataIndex % metadataItems.length];
     const isVisible = visiblePostIds.includes(item.id);
+    const isReposted = item.repostedBy && item.repostedByUsername;
 
     if (!likeAnimationMap.current[item.id]) {
       likeAnimationMap.current[item.id] = new Animated.Value(0);
@@ -409,6 +481,14 @@ export default function HomeScreen() {
 
     return (
     <View style={[styles.postCard, { backgroundColor: theme.card }]}>
+      {isReposted && (
+        <View style={styles.repostHeader}>
+          <Repeat2 size={14} color={theme.textSecondary} />
+          <Text style={[styles.repostText, { color: theme.textSecondary }]}>
+            {item.repostedByUsername} reposted
+          </Text>
+        </View>
+      )}
       <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeader}>
         <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
         <View style={styles.postHeaderInfo}>
@@ -426,6 +506,14 @@ export default function HomeScreen() {
         delayLongPress={500}
       >
         <View style={styles.videoWrapper}>
+          {isReposted && item.repostedByPhoto && (
+            <View style={styles.repostBadge}>
+              <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
+              <View style={styles.repostIconContainer}>
+                <Repeat2 size={12} color={COLORS.white} />
+              </View>
+            </View>
+          )}
           <VideoPlayer
             uri={item.videoUrl}
             style={styles.postImage}
@@ -605,13 +693,23 @@ export default function HomeScreen() {
       >
         <Pressable style={styles.longPressOverlay} onPress={() => setShowLongPressMenu(false)}>
           <View style={[styles.longPressMenu, { backgroundColor: theme.card }]}>
-            <Pressable 
-              onPress={() => selectedPost && handleRepost(selectedPost)} 
-              style={styles.longPressItem}
-            >
-              <Repeat2 size={24} color={theme.text} />
-              <Text style={[styles.longPressText, { color: theme.text }]}>Repost</Text>
-            </Pressable>
+            {selectedPost && userReposts[selectedPost.originalPostId || selectedPost.id] ? (
+              <Pressable 
+                onPress={() => selectedPost && handleRemoveRepost(selectedPost)} 
+                style={styles.longPressItem}
+              >
+                <Repeat2 size={24} color={COLORS.error} />
+                <Text style={[styles.longPressText, { color: COLORS.error }]}>Remove Repost</Text>
+              </Pressable>
+            ) : (
+              <Pressable 
+                onPress={() => selectedPost && handleRepost(selectedPost)} 
+                style={styles.longPressItem}
+              >
+                <Repeat2 size={24} color={theme.text} />
+                <Text style={[styles.longPressText, { color: theme.text }]}>Repost</Text>
+              </Pressable>
+            )}
             <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
             <Pressable 
               onPress={() => selectedPost && handleReport(selectedPost)} 
@@ -813,6 +911,44 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginHorizontal: 12,
+  },
+  repostHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 6,
+  },
+  repostText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  repostBadge: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    zIndex: 10,
+  },
+  repostAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  repostIconContainer: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: COLORS.skyBlue,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   postHeader: {
     flexDirection: 'row',

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform, Animated, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -26,6 +26,7 @@ export default function PostDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [isReposted, setIsReposted] = useState(false);
   const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
   const lastTap = useRef<number>(0);
   const likeAnimation = useRef(new Animated.Value(0)).current;
@@ -60,6 +61,18 @@ export default function PostDetailScreen() {
         setIsLiked(postToSet?.isLiked || false);
         setLikeCount(postToSet?.likes || 0);
       }
+
+      if (user) {
+        const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+        if (existingReposts) {
+          const reposts = JSON.parse(existingReposts);
+          const userRepostsList = reposts[user.id] || [];
+          const isAlreadyReposted = userRepostsList.some(
+            (r: any) => (r.originalPostId || r.id) === id
+          );
+          setIsReposted(isAlreadyReposted);
+        }
+      }
     } catch (error) {
       console.log('Error loading post:', error);
       const mockPost = MOCK_POSTS.find(p => p.id === id);
@@ -70,7 +83,7 @@ export default function PostDetailScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     return () => {
@@ -196,35 +209,61 @@ export default function PostDetailScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+    setShowOptionsMenu(false);
     setShowShareModal(false);
 
-    try {
-      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
-      const reposts = existingReposts ? JSON.parse(existingReposts) : {};
-      
-      if (!reposts[user.id]) {
-        reposts[user.id] = [];
+    if (isReposted) {
+      try {
+        const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+        if (existingReposts) {
+          const reposts = JSON.parse(existingReposts);
+          if (reposts[user.id]) {
+            reposts[user.id] = reposts[user.id].filter(
+              (r: any) => (r.originalPostId || r.id) !== post.id
+            );
+            await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+            setIsReposted(false);
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            Alert.alert('Success', 'Repost removed from your profile!');
+          }
+        }
+      } catch (error) {
+        console.log('Error removing repost:', error);
+        Alert.alert('Error', 'Failed to remove repost');
       }
+    } else {
+      try {
+        const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+        const reposts = existingReposts ? JSON.parse(existingReposts) : {};
+        
+        if (!reposts[user.id]) {
+          reposts[user.id] = [];
+        }
 
-      const repost = {
-        id: `repost_${Date.now()}`,
-        originalPostId: post.id,
-        repostedBy: user.id,
-        repostedByUsername: user.username,
-        repostedAt: new Date().toISOString(),
-        ...post,
-      };
+        const repost = {
+          ...post,
+          id: `repost_${Date.now()}`,
+          originalPostId: post.id,
+          repostedBy: user.id,
+          repostedByUsername: user.username,
+          repostedByPhoto: user.profilePhoto,
+          repostedAt: new Date().toISOString(),
+        };
 
-      reposts[user.id].unshift(repost);
-      await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+        reposts[user.id].unshift(repost);
+        await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+        setIsReposted(true);
 
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        Alert.alert('Success', 'Post reposted to your profile!');
+      } catch (error) {
+        console.log('Error reposting:', error);
+        Alert.alert('Error', 'Failed to repost');
       }
-      Alert.alert('Success', 'Post reposted to your profile!');
-    } catch (error) {
-      console.log('Error reposting:', error);
-      Alert.alert('Error', 'Failed to repost');
     }
   };
 
@@ -516,14 +555,26 @@ export default function PostDetailScreen() {
               </>
             ) : (
               <>
+                {isReposted ? (
+                  <Pressable onPress={handleRepost} style={styles.optionItem}>
+                    <Repeat2 size={22} color={COLORS.error} />
+                    <Text style={[styles.optionText, { color: COLORS.error }]}>Remove Repost</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={handleRepost} style={styles.optionItem}>
+                    <Repeat2 size={22} color={theme.text} />
+                    <Text style={[styles.optionText, { color: theme.text }]}>Repost</Text>
+                  </Pressable>
+                )}
+                <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleReport} style={styles.optionItem}>
                   <Flag size={22} color={theme.text} />
                   <Text style={[styles.optionText, { color: theme.text }]}>Report</Text>
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleShare} style={styles.optionItem}>
-                  <Repeat2 size={22} color={theme.text} />
-                  <Text style={[styles.optionText, { color: theme.text }]}>Repost & Share</Text>
+                  <Share size={22} color={theme.text} />
+                  <Text style={[styles.optionText, { color: theme.text }]}>Share Outside App</Text>
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleBlockUser} style={styles.optionItem}>
@@ -548,14 +599,6 @@ export default function PostDetailScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowShareModal(false)}>
           <View style={[styles.optionsMenu, { backgroundColor: theme.card }]}>
-            <Pressable onPress={handleRepost} style={styles.optionItem}>
-              <Repeat2 size={22} color={COLORS.skyBlue} />
-              <View style={styles.shareOptionTextContainer}>
-                <Text style={[styles.optionText, { color: theme.text }]}>Repost</Text>
-                <Text style={[styles.shareOptionSubtext, { color: theme.textSecondary }]}>Share to your profile</Text>
-              </View>
-            </Pressable>
-            <View style={[styles.separator, { backgroundColor: theme.border }]} />
             <Pressable onPress={handleSendToUser} style={styles.optionItem}>
               <Send size={22} color={theme.text} />
               <View style={styles.shareOptionTextContainer}>
