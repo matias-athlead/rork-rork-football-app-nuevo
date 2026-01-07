@@ -263,7 +263,9 @@ export default function HomeScreen() {
         <Text style={[styles.postCaption, { color: theme.text }]} numberOfLines={2}>
           <Text style={styles.captionUsername}>{item.username}</Text> {item.caption}
         </Text>
-        <Text style={styles.postHashtags}>{item.hashtags.join(' ')}</Text>
+        {item.hashtags && Array.isArray(item.hashtags) && item.hashtags.length > 0 && (
+          <Text style={styles.postHashtags}>{item.hashtags.join(' ')}</Text>
+        )}
         {item.comments > 0 && (
           <Text style={[styles.viewComments, { color: theme.textSecondary }]}>
             View all {item.comments} {t('home.comments')}

@@ -393,13 +393,13 @@ export default function PostDetailScreen() {
             <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>
           )}
           
-          {post.hashtags && post.hashtags.length > 0 && (
+          {post.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
             <Text style={[styles.hashtags, { color: COLORS.skyBlue }]}>
               {post.hashtags.join(' ')}
             </Text>
           )}
 
-          {post.taggedUsers && post.taggedUsers.length > 0 && (
+          {post.taggedUsers && Array.isArray(post.taggedUsers) && post.taggedUsers.length > 0 && (
             <View style={styles.taggedSection}>
               <Text style={[styles.taggedLabel, { color: theme.textSecondary }]}>Tagged:</Text>
               <View style={styles.taggedUsers}>
