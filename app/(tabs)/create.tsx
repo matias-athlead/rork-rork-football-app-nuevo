@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users, Volume2, VolumeX } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users, Volume2, VolumeX, Film } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -11,6 +11,7 @@ import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { MUSIC_LIBRARY, MusicTrack } from '@/src/services/musicLibrary';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 type AspectRatio = '3:4' | '4:5' | 'original';
 
@@ -180,9 +181,15 @@ export default function CreateScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia(result.assets[0].uri);
-      setMediaType(result.assets[0].type || 'image');
+      const uri = result.assets[0].uri;
+      const type = result.assets[0].type || 'image';
+      setSelectedMedia(uri);
+      setMediaType(type);
       setIsPlaying(false);
+      
+      if (type === 'video') {
+        await autoExtractFirstFrame(uri);
+      }
     }
   };
 
@@ -205,9 +212,15 @@ export default function CreateScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setSelectedMedia(result.assets[0].uri);
-      setMediaType(result.assets[0].type || 'image');
+      const uri = result.assets[0].uri;
+      const type = result.assets[0].type || 'image';
+      setSelectedMedia(uri);
+      setMediaType(type);
       setIsPlaying(false);
+      
+      if (type === 'video') {
+        await autoExtractFirstFrame(uri);
+      }
     }
   };
 
@@ -244,6 +257,37 @@ export default function CreateScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setCoverImage(result.assets[0].uri);
+    }
+  };
+
+  const extractVideoFrame = async () => {
+    if (!selectedMedia || mediaType !== 'video') {
+      Alert.alert('Error', 'Please select a video first');
+      return;
+    }
+
+    try {
+      const { uri } = await VideoThumbnails.getThumbnailAsync(selectedMedia, {
+        time: 0,
+        quality: 1,
+      });
+      setCoverImage(uri);
+      Alert.alert('Success', 'Video frame extracted as cover!');
+    } catch (error) {
+      console.log('Error extracting frame:', error);
+      Alert.alert('Error', 'Failed to extract video frame');
+    }
+  };
+
+  const autoExtractFirstFrame = async (videoUri: string) => {
+    try {
+      const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+        time: 0,
+        quality: 1,
+      });
+      setCoverImage(uri);
+    } catch (error) {
+      console.log('Error auto-extracting frame:', error);
     }
   };
 
@@ -301,6 +345,11 @@ export default function CreateScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <KeyboardAvoidingView 
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
       <View style={[styles.header, { backgroundColor: theme.background }]}>
         <Pressable onPress={() => router.back()}>
           <X size={24} color={theme.text} />
@@ -459,21 +508,47 @@ export default function CreateScreen() {
               {coverImage ? (
                 <View>
                   <Image source={{ uri: coverImage }} style={styles.coverPreview} contentFit="cover" />
-                  <Pressable
-                    onPress={handleSelectCover}
-                    style={[styles.changeCoverButton, { backgroundColor: theme.inputBackground }]}
-                  >
-                    <Text style={[styles.changeCoverText, { color: theme.text }]}>Change Cover</Text>
-                  </Pressable>
+                  <View style={styles.coverButtonsContainer}>
+                    <Pressable
+                      onPress={handleSelectCover}
+                      style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
+                    >
+                      <ImageIcon size={18} color={theme.text} />
+                      <Text style={[styles.coverActionText, { color: theme.text }]}>Change</Text>
+                    </Pressable>
+                    {mediaType === 'video' && (
+                      <Pressable
+                        onPress={extractVideoFrame}
+                        style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
+                      >
+                        <Film size={18} color={theme.text} />
+                        <Text style={[styles.coverActionText, { color: theme.text }]}>Extract Frame</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
               ) : (
-                <Pressable
-                  onPress={handleSelectCover}
-                  style={[styles.selectCoverButton, { backgroundColor: theme.inputBackground }]}
-                >
-                  <ImageIcon size={24} color={theme.textSecondary} />
-                  <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Select Cover Image</Text>
-                </Pressable>
+                <View style={styles.noCoverContainer}>
+                  <Pressable
+                    onPress={handleSelectCover}
+                    style={[styles.selectCoverButton, { backgroundColor: theme.inputBackground }]}
+                  >
+                    <ImageIcon size={24} color={theme.textSecondary} />
+                    <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Select Cover Image</Text>
+                  </Pressable>
+                  {mediaType === 'video' && (
+                    <Pressable
+                      onPress={extractVideoFrame}
+                      style={[styles.extractFrameButton, { backgroundColor: theme.inputBackground }]}
+                    >
+                      <Film size={24} color={theme.textSecondary} />
+                      <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Extract Video Frame</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+              {mediaType === 'video' && !coverImage && (
+                <Text style={[styles.coverHint, { color: theme.textSecondary }]}>First frame will be used by default</Text>
               )}
             </View>
 
@@ -710,12 +785,16 @@ export default function CreateScreen() {
           </View>
         </Pressable>
       </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardView: {
     flex: 1,
   },
   header: {
@@ -1060,6 +1139,32 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+  coverButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  coverActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  coverActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noCoverContainer: {
+    gap: 8,
+  },
+  coverHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
+  },
   changeCoverButton: {
     paddingVertical: 12,
     borderRadius: 8,
@@ -1070,6 +1175,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   selectCoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    borderRadius: 12,
+    gap: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(128, 128, 128, 0.3)',
+  },
+  extractFrameButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
