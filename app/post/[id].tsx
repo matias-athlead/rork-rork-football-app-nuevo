@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform, Animated, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, Share2, UserX, MapPin, Music, Users, Heart } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
+const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 
 export default function PostDetailScreen() {
   const { theme } = useTheme();
@@ -21,6 +22,7 @@ export default function PostDetailScreen() {
   const { id } = useLocalSearchParams();
   const [post, setPost] = useState<any>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -186,7 +188,52 @@ export default function PostDetailScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setShowOptionsMenu(false);
-    Alert.alert('Share', 'Share functionality coming soon!');
+    setShowShareModal(true);
+  };
+
+  const handleRepost = async () => {
+    if (!user || !post) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowShareModal(false);
+
+    try {
+      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      const reposts = existingReposts ? JSON.parse(existingReposts) : {};
+      
+      if (!reposts[user.id]) {
+        reposts[user.id] = [];
+      }
+
+      const repost = {
+        id: `repost_${Date.now()}`,
+        originalPostId: post.id,
+        repostedBy: user.id,
+        repostedByUsername: user.username,
+        repostedAt: new Date().toISOString(),
+        ...post,
+      };
+
+      reposts[user.id].unshift(repost);
+      await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      Alert.alert('Success', 'Post reposted to your profile!');
+    } catch (error) {
+      console.log('Error reposting:', error);
+      Alert.alert('Error', 'Failed to repost');
+    }
+  };
+
+  const handleSendToUser = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setShowShareModal(false);
+    Alert.alert('Coming Soon', 'Send to user functionality will be available soon!');
   };
 
   const handleBlockUser = () => {
@@ -475,8 +522,8 @@ export default function PostDetailScreen() {
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleShare} style={styles.optionItem}>
-                  <Share2 size={22} color={theme.text} />
-                  <Text style={[styles.optionText, { color: theme.text }]}>Share</Text>
+                  <Repeat2 size={22} color={theme.text} />
+                  <Text style={[styles.optionText, { color: theme.text }]}>Repost & Share</Text>
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleBlockUser} style={styles.optionItem}>
@@ -487,6 +534,37 @@ export default function PostDetailScreen() {
             )}
             <View style={[styles.separator, { backgroundColor: theme.border }]} />
             <Pressable onPress={() => setShowOptionsMenu(false)} style={styles.optionItem}>
+              <Text style={[styles.optionText, { color: theme.textSecondary }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showShareModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowShareModal(false)}>
+          <View style={[styles.optionsMenu, { backgroundColor: theme.card }]}>
+            <Pressable onPress={handleRepost} style={styles.optionItem}>
+              <Repeat2 size={22} color={COLORS.skyBlue} />
+              <View style={styles.shareOptionTextContainer}>
+                <Text style={[styles.optionText, { color: theme.text }]}>Repost</Text>
+                <Text style={[styles.shareOptionSubtext, { color: theme.textSecondary }]}>Share to your profile</Text>
+              </View>
+            </Pressable>
+            <View style={[styles.separator, { backgroundColor: theme.border }]} />
+            <Pressable onPress={handleSendToUser} style={styles.optionItem}>
+              <Send size={22} color={theme.text} />
+              <View style={styles.shareOptionTextContainer}>
+                <Text style={[styles.optionText, { color: theme.text }]}>Send to User</Text>
+                <Text style={[styles.shareOptionSubtext, { color: theme.textSecondary }]}>Share via direct message</Text>
+              </View>
+            </Pressable>
+            <View style={[styles.separator, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => setShowShareModal(false)} style={styles.optionItem}>
               <Text style={[styles.optionText, { color: theme.textSecondary }]}>Cancel</Text>
             </Pressable>
           </View>
@@ -689,5 +767,12 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     marginLeft: 20,
+  },
+  shareOptionTextContainer: {
+    flex: 1,
+  },
+  shareOptionSubtext: {
+    fontSize: 13,
+    marginTop: 2,
   },
 });

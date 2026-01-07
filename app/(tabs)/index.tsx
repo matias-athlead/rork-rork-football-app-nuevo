@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag, MapPin, Music, Users } from 'lucide-react-native';
@@ -20,10 +20,20 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
+  const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const panX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
   const POSTS_STORAGE_KEY = '@athlead_user_posts';
+
+  const viewabilityConfig: ViewabilityConfig = {
+    itemVisiblePercentThreshold: 50,
+  };
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const visibleIds = viewableItems.map(item => item.item.id);
+    setVisiblePostIds(visibleIds);
+  }).current;
 
   useEffect(() => {
     const loadPosts = async () => {
@@ -197,6 +207,7 @@ export default function HomeScreen() {
     
     const metadataIndex = metadataIndexMap[item.id] || 0;
     const currentMetadata = metadataItems[metadataIndex % metadataItems.length];
+    const isVisible = visiblePostIds.includes(item.id);
 
     return (
     <View style={[styles.postCard, { backgroundColor: theme.card }]}>
@@ -219,6 +230,7 @@ export default function HomeScreen() {
           loop={true}
           showControls={true}
           forceMute={!!(item as any).musicUrl}
+          isVisible={isVisible}
         />
         
         {currentMetadata && (
@@ -351,6 +363,8 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           scrollEnabled={true}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           />
         </Animated.View>
       </View>

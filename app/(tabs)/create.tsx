@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users, Volume2, VolumeX, Film } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X, Video as VideoIcon, Check, Play, Pause, MapPin, Music, Users, Volume2, VolumeX, Film, Scissors } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -13,7 +14,7 @@ import { MOCK_USERS } from '@/src/services/mockData';
 import { MUSIC_LIBRARY, MusicTrack } from '@/src/services/musicLibrary';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 
-type AspectRatio = '3:4' | '4:5' | 'original';
+type AspectRatio = '4:3' | '4:5' | '16:9' | 'original';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
@@ -25,7 +26,6 @@ export default function CreateScreen() {
   const [mediaType, setMediaType] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('4:5');
   const [caption, setCaption] = useState('');
-  const [showAspectModal, setShowAspectModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<Video>(null);
@@ -45,11 +45,15 @@ export default function CreateScreen() {
   const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
   const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [showFramePickerModal, setShowFramePickerModal] = useState(false);
+  const [framePickerTime, setFramePickerTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
-      case '3:4': return 3 / 4;
+      case '4:3': return 4 / 3;
       case '4:5': return 4 / 5;
+      case '16:9': return 16 / 9;
       default: return 1;
     }
   };
@@ -238,6 +242,9 @@ export default function CreateScreen() {
   const handleVideoStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
       setIsPlaying(status.isPlaying);
+      if (status.durationMillis) {
+        setVideoDuration(status.durationMillis);
+      }
       if (status.didJustFinish) {
         setIsPlaying(false);
       }
@@ -260,7 +267,7 @@ export default function CreateScreen() {
     }
   };
 
-  const extractVideoFrame = async () => {
+  const extractVideoFrame = async (timeMs?: number) => {
     if (!selectedMedia || mediaType !== 'video') {
       Alert.alert('Error', 'Please select a video first');
       return;
@@ -268,15 +275,28 @@ export default function CreateScreen() {
 
     try {
       const { uri } = await VideoThumbnails.getThumbnailAsync(selectedMedia, {
-        time: 0,
+        time: timeMs !== undefined ? timeMs : 0,
         quality: 1,
       });
       setCoverImage(uri);
-      Alert.alert('Success', 'Video frame extracted as cover!');
+      if (timeMs === undefined) {
+        Alert.alert('Success', 'Video frame extracted as cover!');
+      }
     } catch (error) {
       console.log('Error extracting frame:', error);
       Alert.alert('Error', 'Failed to extract video frame');
     }
+  };
+
+  const openFramePicker = () => {
+    setFramePickerTime(0);
+    setShowFramePickerModal(true);
+  };
+
+  const handleFrameSelect = async () => {
+    await extractVideoFrame(framePickerTime * 1000);
+    setShowFramePickerModal(false);
+    Alert.alert('Success', 'Frame selected as cover!');
   };
 
   const autoExtractFirstFrame = async (videoUri: string) => {
@@ -341,7 +361,7 @@ export default function CreateScreen() {
     track.artist.toLowerCase().includes(musicSearch.toLowerCase())
   );
 
-  const aspectRatios: AspectRatio[] = ['3:4', '4:5', 'original'];
+  const aspectRatios: AspectRatio[] = ['4:3', '4:5', '16:9', 'original'];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -463,12 +483,24 @@ export default function CreateScreen() {
 
             <View style={[styles.aspectSection, { backgroundColor: theme.card }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Aspect Ratio</Text>
-              <Pressable
-                onPress={() => setShowAspectModal(true)}
-                style={[styles.aspectButton, { backgroundColor: theme.inputBackground }]}
-              >
-                <Text style={[styles.aspectButtonText, { color: theme.text }]}>{aspectRatio}</Text>
-              </Pressable>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.aspectScrollView}>
+                <View style={styles.aspectRatioRow}>
+                  {aspectRatios.map((ratio) => (
+                    <Pressable
+                      key={ratio}
+                      onPress={() => setAspectRatio(ratio)}
+                      style={[
+                        styles.aspectRatioButton,
+                        { backgroundColor: aspectRatio === ratio ? COLORS.skyBlue : theme.inputBackground }
+                      ]}
+                    >
+                      <Text style={[styles.aspectRatioText, { color: aspectRatio === ratio ? COLORS.white : theme.text }]}>
+                        {ratio}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
 
             <View style={[styles.captionSection, { backgroundColor: theme.card }]}>
@@ -514,16 +546,25 @@ export default function CreateScreen() {
                       style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
                     >
                       <ImageIcon size={18} color={theme.text} />
-                      <Text style={[styles.coverActionText, { color: theme.text }]}>Change</Text>
+                      <Text style={[styles.coverActionText, { color: theme.text }]}>Image</Text>
                     </Pressable>
                     {mediaType === 'video' && (
-                      <Pressable
-                        onPress={extractVideoFrame}
-                        style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
-                      >
-                        <Film size={18} color={theme.text} />
-                        <Text style={[styles.coverActionText, { color: theme.text }]}>Extract Frame</Text>
-                      </Pressable>
+                      <>
+                        <Pressable
+                          onPress={() => extractVideoFrame(0)}
+                          style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
+                        >
+                          <Film size={18} color={theme.text} />
+                          <Text style={[styles.coverActionText, { color: theme.text }]}>First Frame</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={openFramePicker}
+                          style={[styles.coverActionButton, { backgroundColor: theme.inputBackground }]}
+                        >
+                          <Scissors size={18} color={theme.text} />
+                          <Text style={[styles.coverActionText, { color: theme.text }]}>Pick Frame</Text>
+                        </Pressable>
+                      </>
                     )}
                   </View>
                 </View>
@@ -537,13 +578,22 @@ export default function CreateScreen() {
                     <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Select Cover Image</Text>
                   </Pressable>
                   {mediaType === 'video' && (
-                    <Pressable
-                      onPress={extractVideoFrame}
-                      style={[styles.extractFrameButton, { backgroundColor: theme.inputBackground }]}
-                    >
-                      <Film size={24} color={theme.textSecondary} />
-                      <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Extract Video Frame</Text>
-                    </Pressable>
+                    <>
+                      <Pressable
+                        onPress={() => extractVideoFrame(0)}
+                        style={[styles.extractFrameButton, { backgroundColor: theme.inputBackground }]}
+                      >
+                        <Film size={24} color={theme.textSecondary} />
+                        <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Extract First Frame</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={openFramePicker}
+                        style={[styles.extractFrameButton, { backgroundColor: theme.inputBackground }]}
+                      >
+                        <Scissors size={24} color={theme.textSecondary} />
+                        <Text style={[styles.selectCoverText, { color: theme.textSecondary }]}>Pick Frame Manually</Text>
+                      </Pressable>
+                    </>
                   )}
                 </View>
               )}
@@ -638,28 +688,54 @@ export default function CreateScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={showAspectModal} transparent animationType="slide">
-        <Pressable style={styles.modalOverlay} onPress={() => setShowAspectModal(false)}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Select Aspect Ratio</Text>
-            {aspectRatios.map((ratio) => (
-              <Pressable
-                key={ratio}
-                onPress={() => {
-                  setAspectRatio(ratio);
-                  setShowAspectModal(false);
-                }}
-                style={[
-                  styles.aspectOption,
-                  { backgroundColor: aspectRatio === ratio ? COLORS.skyBlue : theme.card }
-                ]}
-              >
-                <Text style={[styles.aspectOptionText, { color: aspectRatio === ratio ? COLORS.white : theme.text }]}>
-                  {ratio === 'original' ? 'Original' : ratio}
-                </Text>
-                {aspectRatio === ratio && <Check size={20} color={COLORS.white} />}
+      <Modal visible={showFramePickerModal} transparent animationType="slide">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowFramePickerModal(false)}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]} onStartShouldSetResponder={() => true}>
+            <View style={styles.framePickerHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Frame</Text>
+              <Pressable onPress={() => setShowFramePickerModal(false)}>
+                <X size={24} color={theme.text} />
               </Pressable>
-            ))}
+            </View>
+            
+            {selectedMedia && (
+              <View style={styles.framePreviewContainer}>
+                <Video
+                  source={{ uri: selectedMedia }}
+                  style={styles.framePreviewVideo}
+                  resizeMode={ResizeMode.CONTAIN}
+                  positionMillis={framePickerTime * 1000}
+                  shouldPlay={false}
+                />
+              </View>
+            )}
+            
+            <View style={styles.sliderContainer}>
+              <Text style={[styles.timeText, { color: theme.textSecondary }]}>
+                {Math.floor(framePickerTime / 60)}:{(Math.floor(framePickerTime) % 60).toString().padStart(2, '0')}
+              </Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={Math.floor(videoDuration / 1000) || 60}
+                value={framePickerTime}
+                onValueChange={setFramePickerTime}
+                minimumTrackTintColor={COLORS.skyBlue}
+                maximumTrackTintColor={theme.border}
+                thumbTintColor={COLORS.skyBlue}
+              />
+              <Text style={[styles.timeText, { color: theme.textSecondary }]}>
+                {Math.floor((videoDuration / 1000) / 60)}:{(Math.floor(videoDuration / 1000) % 60).toString().padStart(2, '0')}
+              </Text>
+            </View>
+            
+            <Pressable
+              onPress={handleFrameSelect}
+              style={[styles.selectFrameButton, { backgroundColor: COLORS.skyBlue }]}
+            >
+              <Check size={20} color={COLORS.white} />
+              <Text style={styles.selectFrameButtonText}>Select This Frame</Text>
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -1262,5 +1338,70 @@ const styles = StyleSheet.create({
   musicItemArtist: {
     fontSize: 13,
     marginTop: 2,
+  },
+  aspectScrollView: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  aspectRatioRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  aspectRatioButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  aspectRatioText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  framePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  framePreviewContainer: {
+    width: '100%',
+    height: 250,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    backgroundColor: '#000',
+  },
+  framePreviewVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  slider: {
+    flex: 1,
+    height: 40,
+  },
+  timeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    minWidth: 40,
+  },
+  selectFrameButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  selectFrameButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.white,
   },
 });

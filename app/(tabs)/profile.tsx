@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Settings, Crown, Grid3x3, BarChart3, MapPin } from 'lucide-react-native';
+import { Settings, Crown, Grid3x3, BarChart3, MapPin, Repeat2 } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
@@ -10,12 +10,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
+const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
   const [userPosts, setUserPosts] = useState<any[]>([]);
+  const [userReposts, setUserReposts] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reposts'>('posts');
 
   const loadUserPosts = useCallback(async () => {
     if (!user) return;
@@ -24,6 +27,12 @@ export default function ProfileScreen() {
       if (postsData) {
         const allPosts = JSON.parse(postsData);
         setUserPosts(allPosts[user.id] || []);
+      }
+      
+      const repostsData = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      if (repostsData) {
+        const allReposts = JSON.parse(repostsData);
+        setUserReposts(allReposts[user.id] || []);
       }
     } catch (error) {
       console.log('Error loading posts:', error);
@@ -73,6 +82,8 @@ export default function ProfileScreen() {
     { label: 'Followers', value: user.followers.toLocaleString() },
     { label: 'Following', value: user.following.toLocaleString() },
   ];
+
+  const displayedItems = activeTab === 'posts' ? userPosts : userReposts;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -162,8 +173,17 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.tabsContainer}>
-          <Pressable style={[styles.tab, styles.tabActive]}>
-            <Grid3x3 size={20} color={theme.text} />
+          <Pressable 
+            onPress={() => setActiveTab('posts')}
+            style={[styles.tab, activeTab === 'posts' && styles.tabActive]}
+          >
+            <Grid3x3 size={20} color={activeTab === 'posts' ? theme.text : theme.textSecondary} />
+          </Pressable>
+          <Pressable 
+            onPress={() => setActiveTab('reposts')}
+            style={[styles.tab, activeTab === 'reposts' && styles.tabActive]}
+          >
+            <Repeat2 size={20} color={activeTab === 'reposts' ? theme.text : theme.textSecondary} />
           </Pressable>
           <Pressable 
             onPress={() => router.push('/radar-stats' as any)}
@@ -174,27 +194,38 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.postsGrid}>
-          {userPosts.length > 0 ? (
-            userPosts.map((post, index) => (
+          {displayedItems.length > 0 ? (
+            displayedItems.map((item, index) => (
               <Pressable 
                 key={index} 
                 style={styles.postItem}
-                onPress={() => router.push(`/post/${post.id}` as any)}
+                onPress={() => router.push(`/post/${item.originalPostId || item.id}` as any)}
               >
                 <Image
-                  source={{ uri: post.coverImageUrl || post.thumbnailUrl }}
+                  source={{ uri: item.coverImageUrl || item.thumbnailUrl }}
                   style={styles.postImage}
                   contentFit="cover"
                 />
                 <View style={styles.videoIndicator}>
                   <Text style={styles.videoIndicatorText}>▶</Text>
                 </View>
+                {item.repostedBy && (
+                  <View style={styles.repostIndicator}>
+                    <Repeat2 size={16} color={COLORS.white} />
+                  </View>
+                )}
               </Pressable>
             ))
           ) : (
             <View style={[styles.emptyState, { backgroundColor: theme.card }]}>
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No posts yet</Text>
-              <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>Tap + to create your first post</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                {activeTab === 'posts' ? 'No posts yet' : 'No reposts yet'}
+              </Text>
+              <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                {activeTab === 'posts' 
+                  ? 'Tap + to create your first post' 
+                  : 'Repost content you like to share with your followers'}
+              </Text>
             </View>
           )}
         </View>
@@ -395,5 +426,13 @@ const styles = StyleSheet.create({
   videoIndicatorText: {
     color: COLORS.white,
     fontSize: 10,
+  },
+  repostIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 4,
+    borderRadius: 12,
   },
 });

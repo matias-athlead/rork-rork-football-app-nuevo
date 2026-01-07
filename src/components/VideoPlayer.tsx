@@ -12,6 +12,7 @@ interface VideoPlayerProps {
   showControls?: boolean;
   loop?: boolean;
   forceMute?: boolean;
+  isVisible?: boolean;
 }
 
 export default function VideoPlayer({ 
@@ -21,9 +22,10 @@ export default function VideoPlayer({
   isFocused = true,
   showControls = true,
   loop = true,
-  forceMute = false
+  forceMute = false,
+  isVisible = true
 }: VideoPlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(autoPlay);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const videoRef = useRef<Video>(null);
@@ -35,11 +37,13 @@ export default function VideoPlayer({
   }, [forceMute]);
 
   useEffect(() => {
-    if (!isFocused && isPlaying) {
-      videoRef.current?.pauseAsync();
-      setIsPlaying(false);
+    if (!isVisible || !isFocused) {
+      if (isPlaying) {
+        videoRef.current?.pauseAsync();
+        setIsPlaying(false);
+      }
     }
-  }, [isFocused, isPlaying]);
+  }, [isVisible, isFocused, isPlaying]);
 
   const handlePlayPause = async () => {
     if (!videoRef.current) return;
