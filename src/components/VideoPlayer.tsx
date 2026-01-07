@@ -11,6 +11,7 @@ interface VideoPlayerProps {
   isFocused?: boolean;
   showControls?: boolean;
   loop?: boolean;
+  forceMute?: boolean;
 }
 
 export default function VideoPlayer({ 
@@ -19,12 +20,19 @@ export default function VideoPlayer({
   autoPlay = false, 
   isFocused = true,
   showControls = true,
-  loop = true 
+  loop = true,
+  forceMute = false
 }: VideoPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const videoRef = useRef<Video>(null);
+
+  useEffect(() => {
+    if (forceMute) {
+      setIsMuted(true);
+    }
+  }, [forceMute]);
 
   useEffect(() => {
     if (!isFocused && isPlaying) {
@@ -46,7 +54,7 @@ export default function VideoPlayer({
   };
 
   const handleMuteToggle = async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || forceMute) return;
     setIsMuted(!isMuted);
   };
 
@@ -93,7 +101,7 @@ export default function VideoPlayer({
         </Pressable>
       )}
 
-      {showControls && (
+      {showControls && !forceMute && (
         <Pressable 
           onPress={handleMuteToggle}
           style={styles.muteButton}

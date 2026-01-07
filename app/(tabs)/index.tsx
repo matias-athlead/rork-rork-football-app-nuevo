@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, UserPlus, Bell, Send, Flag, MapPin, Music, Users } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -18,9 +19,56 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState(MOCK_POSTS);
+  const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
   const panX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
+  const POSTS_STORAGE_KEY = '@athlead_user_posts';
+
+  useEffect(() => {
+    const loadPosts = async () => {
+      try {
+        const postsData = await AsyncStorage.getItem(POSTS_STORAGE_KEY);
+        if (postsData) {
+          const allPosts = JSON.parse(postsData);
+          const userPosts = [];
+          for (const userId in allPosts) {
+            userPosts.push(...allPosts[userId]);
+          }
+          if (userPosts.length > 0) {
+            setPosts([...userPosts, ...MOCK_POSTS]);
+          }
+        }
+      } catch (error) {
+        console.log('Error loading posts:', error);
+      }
+    };
+    loadPosts();
+  }, []);
+
+  useEffect(() => {
+    const intervals: {[key: string]: ReturnType<typeof setInterval>} = {};
+    
+    posts.forEach(post => {
+      const metadataItems = [];
+      if (post.location) metadataItems.push('location');
+      if (post.musicTitle) metadataItems.push('music');
+      if (post.clubTag) metadataItems.push('club');
+      
+      if (metadataItems.length > 1) {
+        intervals[post.id] = setInterval(() => {
+          setMetadataIndexMap(prev => ({
+            ...prev,
+            [post.id]: ((prev[post.id] || 0) + 1) % metadataItems.length
+          }));
+        }, 3000);
+      }
+    });
+
+    return () => {
+      Object.values(intervals).forEach(clearInterval);
+    };
+  }, [posts]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -138,7 +186,19 @@ export default function HomeScreen() {
     }
   };
 
-  const renderPost = ({ item }: { item: Post }) => (
+  const renderPost = ({ item }: { item: Post }) => {
+    const metadataItems = [];
+    if (item.location) metadataItems.push({ type: 'location', content: item.location });
+    if (item.musicTitle) metadataItems.push({ 
+      type: 'music', 
+      content: `${item.musicTitle}${item.musicArtist ? ' • ' + item.musicArtist : ''}` 
+    });
+    if (item.clubTag) metadataItems.push({ type: 'club', content: `@${item.clubTag}` });
+    
+    const metadataIndex = metadataIndexMap[item.id] || 0;
+    const currentMetadata = metadataItems[metadataIndex % metadataItems.length];
+
+    return (
     <View style={[styles.postCard, { backgroundColor: theme.card }]}>
       <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeader}>
         <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
@@ -151,13 +211,27 @@ export default function HomeScreen() {
         </Pressable>
       </Pressable>
 
-      <VideoPlayer
-        uri={item.videoUrl}
-        style={styles.postImage}
-        autoPlay={false}
-        loop={true}
-        showControls={true}
-      />
+      <View style={styles.videoWrapper}>
+        <VideoPlayer
+          uri={item.videoUrl}
+          style={styles.postImage}
+          autoPlay={false}
+          loop={true}
+          showControls={true}
+          forceMute={!!(item as any).musicUrl}
+        />
+        
+        {currentMetadata && (
+          <View style={styles.metadataOverlay}>
+            <View style={styles.overlayItemSingle}>
+              {currentMetadata.type === 'location' && <MapPin size={14} color={COLORS.white} />}
+              {currentMetadata.type === 'music' && <Music size={14} color={COLORS.white} />}
+              {currentMetadata.type === 'club' && <Users size={14} color={COLORS.white} />}
+              <Text style={styles.overlayText} numberOfLines={1}>{currentMetadata.content}</Text>
+            </View>
+          </View>
+        )}
+      </View>
 
       <View style={styles.postActions}>
         <View style={styles.leftActions}>
@@ -202,7 +276,8 @@ export default function HomeScreen() {
         )}
       </View>
     </View>
-  );
+    );
+  };
 
   const filteredPosts = activeTab === 'following' 
     ? posts.filter(p => Math.random() > 0.5)
@@ -394,9 +469,35 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
+  videoWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
   postImage: {
     width: '100%',
     height: 400,
+  },
+  metadataOverlay: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+  },
+  overlayItemSingle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  overlayText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '500',
+    maxWidth: 200,
   },
   postActions: {
     flexDirection: 'row',

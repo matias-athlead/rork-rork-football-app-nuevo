@@ -28,6 +28,7 @@ export default function PostDetailScreen() {
   const lastTap = useRef<number>(0);
   const likeAnimation = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  const [metadataIndex, setMetadataIndex] = useState(0);
 
   const loadPost = useCallback(async () => {
     try {
@@ -97,6 +98,20 @@ export default function PostDetailScreen() {
     };
     playMusic();
   }, [post?.musicUrl]);
+
+  useEffect(() => {
+    const metadataItems = [];
+    if (post?.location) metadataItems.push('location');
+    if (post?.musicTitle) metadataItems.push('music');
+    if (post?.clubTag) metadataItems.push('club');
+
+    if (metadataItems.length > 1) {
+      const interval = setInterval(() => {
+        setMetadataIndex((prev) => (prev + 1) % metadataItems.length);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [post?.location, post?.musicTitle, post?.clubTag]);
 
   const isOwnPost = user?.id === post?.userId;
 
@@ -311,6 +326,7 @@ export default function PostDetailScreen() {
               autoPlay={true}
               loop={true}
               showControls={true}
+              forceMute={!!post.musicUrl}
             />
           ) : (
             <Image
@@ -320,30 +336,32 @@ export default function PostDetailScreen() {
             />
           )}
           
-          {(post.location || post.musicTitle || post.clubTag) && (
-            <View style={styles.metadataOverlay}>
-              {post.location && (
-                <Pressable onPress={handleLocationPress} style={styles.overlayItem}>
-                  <MapPin size={14} color={COLORS.white} />
-                  <Text style={styles.overlayText} numberOfLines={1}>{post.location}</Text>
+          {(post.location || post.musicTitle || post.clubTag) && (() => {
+            const metadataItems = [];
+            if (post.location) metadataItems.push({ type: 'location', content: post.location });
+            if (post.musicTitle) metadataItems.push({ 
+              type: 'music', 
+              content: `${post.musicTitle}${post.musicArtist ? ' • ' + post.musicArtist : ''}` 
+            });
+            if (post.clubTag) metadataItems.push({ type: 'club', content: `@${post.clubTag}` });
+
+            const currentItem = metadataItems[metadataIndex % metadataItems.length];
+            if (!currentItem) return null;
+
+            return (
+              <View style={styles.metadataOverlay}>
+                <Pressable 
+                  onPress={currentItem.type === 'location' ? handleLocationPress : undefined}
+                  style={styles.overlayItemSingle}
+                >
+                  {currentItem.type === 'location' && <MapPin size={14} color={COLORS.white} />}
+                  {currentItem.type === 'music' && <Music size={14} color={COLORS.white} />}
+                  {currentItem.type === 'club' && <Users size={14} color={COLORS.white} />}
+                  <Text style={styles.overlayText} numberOfLines={1}>{currentItem.content}</Text>
                 </Pressable>
-              )}
-              {post.musicTitle && (
-                <View style={styles.overlayItem}>
-                  <Music size={14} color={COLORS.white} />
-                  <Text style={styles.overlayText} numberOfLines={1}>
-                    {post.musicTitle} {post.musicArtist ? `• ${post.musicArtist}` : ''}
-                  </Text>
-                </View>
-              )}
-              {post.clubTag && (
-                <View style={styles.overlayItem}>
-                  <Users size={14} color={COLORS.white} />
-                  <Text style={styles.overlayText} numberOfLines={1}>@{post.clubTag}</Text>
-                </View>
-              )}
-            </View>
-          )}
+              </View>
+            );
+          })()}
 
           <Animated.View 
             style={[styles.likeAnimationContainer, {
@@ -511,7 +529,6 @@ const styles = StyleSheet.create({
     top: 16,
     left: 16,
     right: 16,
-    gap: 8,
   },
   overlayItem: {
     flexDirection: 'row',
@@ -521,6 +538,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  overlayItemSingle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
   },
   overlayText: {
     color: COLORS.white,
