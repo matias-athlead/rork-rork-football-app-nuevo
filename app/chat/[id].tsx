@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert, FlatList as RNFlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity, Calendar, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity, Calendar, ChevronRight, Play } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -33,6 +33,16 @@ interface ChatMessage {
   mediaUrl?: string;
   mediaType?: 'permanent' | 'ephemeral';
   isViewed?: boolean;
+  postData?: {
+    id: string;
+    userId: string;
+    username: string;
+    userPhoto: string;
+    videoUrl: string;
+    thumbnailUrl: string;
+    caption: string;
+    likes: number;
+  };
   isSent: boolean;
   createdAt: string;
 }
@@ -52,6 +62,7 @@ export default function ChatScreen() {
   const [newTaskDate, setNewTaskDate] = useState('');
   const [newTaskTime, setNewTaskTime] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [photoType, setPhotoType] = useState<'permanent' | 'ephemeral'>('permanent');
@@ -65,6 +76,7 @@ export default function ChatScreen() {
   const NOTES_KEY = `@chat_notes_${id}`;
   const TASKS_KEY = `@chat_tasks_${id}`;
   const MESSAGES_KEY = `@chat_messages_${id}`;
+  const DELETED_POSTS_KEY = '@athlead_deleted_posts';
 
   useEffect(() => {
     const loadNotes = async () => {
@@ -100,9 +112,21 @@ export default function ChatScreen() {
       }
     };
 
+    const loadDeletedPosts = async () => {
+      try {
+        const deletedData = await AsyncStorage.getItem(DELETED_POSTS_KEY);
+        if (deletedData) {
+          setDeletedPostIds(JSON.parse(deletedData));
+        }
+      } catch (error) {
+        console.log('Error loading deleted posts:', error);
+      }
+    };
+
     loadNotes();
     loadTasks();
     loadMessages();
+    loadDeletedPosts();
   }, [id, NOTES_KEY, TASKS_KEY, MESSAGES_KEY]);
 
   const saveNotes = async (updatedNotes: Note[]) => {
@@ -482,12 +506,35 @@ export default function ChatScreen() {
               </View>
             ) : (
               <RNFlatList
-                data={messages}
+                data={messages.filter(m => !m.postData || !deletedPostIds.includes(m.postData.id))}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.messagesList}
                 renderItem={({ item }) => (
                   <View style={[styles.messageBubble, item.isSent ? styles.sentMessage : styles.receivedMessage]}>
-                    {item.mediaUrl ? (
+                    {item.postData ? (
+                      <Pressable
+                        onPress={() => router.push(`/post/${item.postData!.id}` as any)}
+                        style={styles.postMessageContainer}
+                      >
+                        <Image source={{ uri: item.postData.thumbnailUrl }} style={styles.postThumbnail} contentFit="cover" />
+                        <View style={styles.postPlayIcon}>
+                          <Play size={24} color={COLORS.white} fill={COLORS.white} />
+                        </View>
+                        <View style={styles.postMessageInfo}>
+                          <View style={styles.postMessageHeader}>
+                            <Image source={{ uri: item.postData.userPhoto }} style={styles.postMessageAvatar} />
+                            <Text style={[styles.postMessageUsername, { color: item.isSent ? COLORS.white : theme.text }]} numberOfLines={1}>
+                              {item.postData.username}
+                            </Text>
+                          </View>
+                          {item.postData.caption && (
+                            <Text style={[styles.postMessageCaption, { color: item.isSent ? COLORS.white : theme.text }]} numberOfLines={2}>
+                              {item.postData.caption}
+                            </Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    ) : item.mediaUrl ? (
                       <View style={styles.mediaContainer}>
                         {item.mediaType === 'ephemeral' && !item.isViewed ? (
                           <Pressable
@@ -902,6 +949,46 @@ const styles = StyleSheet.create({
   ephemeralViewedText: {
     fontSize: 13,
     fontStyle: 'italic',
+  },
+  postMessageContainer: {
+    width: 240,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  postThumbnail: {
+    width: '100%',
+    height: 160,
+  },
+  postPlayIcon: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  postMessageInfo: {
+    padding: 10,
+    gap: 6,
+  },
+  postMessageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  postMessageAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  postMessageUsername: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  postMessageCaption: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   inputContainer: {
     flexDirection: 'row',

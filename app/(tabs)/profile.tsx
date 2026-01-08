@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Settings, Crown, Grid3x3, BarChart3, MapPin, Repeat2 } from 'lucide-react-native';
+import { Settings, Crown, Grid3x3, BarChart3, MapPin, Repeat2, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
+const DELETED_POSTS_KEY = '@athlead_deleted_posts';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -38,6 +39,52 @@ export default function ProfileScreen() {
       console.log('Error loading posts:', error);
     }
   }, [user]);
+
+  const handleDeletePost = async (postId: string) => {
+    if (!user) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This will remove it from all feeds.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const postsData = await AsyncStorage.getItem(POSTS_STORAGE_KEY);
+              if (postsData) {
+                const allPosts = JSON.parse(postsData);
+                if (allPosts[user.id]) {
+                  allPosts[user.id] = allPosts[user.id].filter((p: any) => p.id !== postId);
+                  await AsyncStorage.setItem(POSTS_STORAGE_KEY, JSON.stringify(allPosts));
+                }
+              }
+
+              const deletedPostsData = await AsyncStorage.getItem(DELETED_POSTS_KEY);
+              const deletedPosts = deletedPostsData ? JSON.parse(deletedPostsData) : [];
+              deletedPosts.push(postId);
+              await AsyncStorage.setItem(DELETED_POSTS_KEY, JSON.stringify(deletedPosts));
+
+              setUserPosts(prev => prev.filter(p => p.id !== postId));
+              
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              Alert.alert('Success', 'Post deleted successfully');
+            } catch (error) {
+              console.log('Error deleting post:', error);
+              Alert.alert('Error', 'Failed to delete post');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleOpenMaps = async () => {
     if (!user?.city) return;
@@ -200,6 +247,12 @@ export default function ProfileScreen() {
                 key={index} 
                 style={styles.postItem}
                 onPress={() => router.push(`/post/${item.originalPostId || item.id}` as any)}
+                onLongPress={() => {
+                  if (activeTab === 'posts' && !item.repostedBy) {
+                    handleDeletePost(item.id);
+                  }
+                }}
+                delayLongPress={500}
               >
                 <Image
                   source={{ uri: item.coverImageUrl || item.thumbnailUrl }}
@@ -212,6 +265,11 @@ export default function ProfileScreen() {
                 {item.repostedBy && (
                   <View style={styles.repostIndicator}>
                     <Repeat2 size={16} color={COLORS.white} />
+                  </View>
+                )}
+                {activeTab === 'posts' && !item.repostedBy && (
+                  <View style={styles.deleteIndicator}>
+                    <Trash2 size={12} color={COLORS.white} />
                   </View>
                 )}
               </Pressable>
@@ -432,6 +490,14 @@ const styles = StyleSheet.create({
     top: 4,
     right: 4,
     backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 4,
+    borderRadius: 12,
+  },
+  deleteIndicator: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: 'rgba(220,38,38,0.9)',
     padding: 4,
     borderRadius: 12,
   },

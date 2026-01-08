@@ -16,6 +16,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 const FOLLOWED_USERS_KEY = '@athlead_followed_users';
+const DELETED_POSTS_KEY = '@athlead_deleted_posts';
 
 export default function HomeScreen() {
   const { theme } = useTheme();
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
+  const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
   const [showLongPressMenu, setShowLongPressMenu] = useState(false);
   const [userReposts, setUserReposts] = useState<{[key: string]: boolean}>({});
   const [showSendModal, setShowSendModal] = useState(false);
@@ -102,6 +104,20 @@ export default function HomeScreen() {
     const visibleIds = viewableItems.map(item => item.item.id);
     setVisiblePostIds(visibleIds);
   }).current;
+
+  useEffect(() => {
+    const loadDeletedPosts = async () => {
+      try {
+        const deletedData = await AsyncStorage.getItem(DELETED_POSTS_KEY);
+        if (deletedData) {
+          setDeletedPostIds(JSON.parse(deletedData));
+        }
+      } catch (error) {
+        console.log('Error loading deleted posts:', error);
+      }
+    };
+    loadDeletedPosts();
+  }, []);
 
   useEffect(() => {
     const loadPosts = async () => {
@@ -418,7 +434,7 @@ export default function HomeScreen() {
     );
   };
 
-  const handleConfirmSend = () => {
+  const handleConfirmSend = async () => {
     if (selectedUsers.length === 0) {
       Alert.alert('Error', 'Please select at least one user');
       return;
@@ -426,6 +442,39 @@ export default function HomeScreen() {
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+
+    if (selectedPost) {
+      for (const userId of selectedUsers) {
+        try {
+          const MESSAGES_KEY = `@chat_messages_${userId}`;
+          const storedMessages = await AsyncStorage.getItem(MESSAGES_KEY);
+          const messages = storedMessages ? JSON.parse(storedMessages) : [];
+          
+          const postMessage = {
+            id: Date.now().toString() + Math.random(),
+            text: '',
+            postData: {
+              id: selectedPost.id,
+              userId: selectedPost.userId,
+              username: selectedPost.username,
+              userPhoto: selectedPost.userPhoto,
+              videoUrl: selectedPost.videoUrl,
+              thumbnailUrl: selectedPost.thumbnailUrl,
+              caption: selectedPost.caption,
+              likes: selectedPost.likes,
+            },
+            isSent: true,
+            createdAt: new Date().toISOString(),
+          };
+          
+          messages.push(postMessage);
+          await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+        } catch (error) {
+          console.log('Error sending post to user:', error);
+        }
+      }
+    }
+
     Alert.alert('Sent!', `Post sent to ${selectedUsers.length} user${selectedUsers.length > 1 ? 's' : ''}`);
     setShowSendModal(false);
     setSelectedUsers([]);
@@ -433,10 +482,41 @@ export default function HomeScreen() {
     setSendSearchQuery('');
   };
 
-  const handleQuickSend = (userId: string, username: string) => {
+  const handleQuickSend = async (userId: string, username: string) => {
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+
+    if (selectedPost) {
+      try {
+        const MESSAGES_KEY = `@chat_messages_${userId}`;
+        const storedMessages = await AsyncStorage.getItem(MESSAGES_KEY);
+        const messages = storedMessages ? JSON.parse(storedMessages) : [];
+        
+        const postMessage = {
+          id: Date.now().toString() + Math.random(),
+          text: '',
+          postData: {
+            id: selectedPost.id,
+            userId: selectedPost.userId,
+            username: selectedPost.username,
+            userPhoto: selectedPost.userPhoto,
+            videoUrl: selectedPost.videoUrl,
+            thumbnailUrl: selectedPost.thumbnailUrl,
+            caption: selectedPost.caption,
+            likes: selectedPost.likes,
+          },
+          isSent: true,
+          createdAt: new Date().toISOString(),
+        };
+        
+        messages.push(postMessage);
+        await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+      } catch (error) {
+        console.log('Error sending post to user:', error);
+      }
+    }
+
     Alert.alert('Sent!', `Post sent to ${username}`);
     setShowSendModal(false);
     setSelectedUsers([]);
@@ -562,12 +642,13 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <Pressable 
-        onPress={() => handleDoubleTap(item.id)}
-        onLongPress={() => handleLongPress(item)}
-        delayLongPress={500}
-      >
-        <View style={[styles.videoWrapper, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}>
+      <View style={[styles.videoWrapper, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}>
+        <Pressable 
+          onPress={() => handleDoubleTap(item.id)}
+          onLongPress={() => handleLongPress(item)}
+          delayLongPress={500}
+          style={styles.videoTouchOverlay}
+        >
           {isReposted && item.repostedByPhoto && (
             <View style={styles.repostBadge}>
               <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
@@ -611,8 +692,8 @@ export default function HomeScreen() {
           >
             <Heart size={80} color={COLORS.white} fill={COLORS.white} />
           </Animated.View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
 
       <View style={styles.postActions}>
         <View style={styles.leftActions}>
@@ -662,9 +743,13 @@ export default function HomeScreen() {
     );
   };
 
-  const filteredPosts = activeTab === 'following' 
-    ? posts.filter(p => followedUsers.includes(p.userId))
-    : posts;
+  const filteredPosts = useMemo(() => {
+    const filtered = activeTab === 'following' 
+      ? posts.filter(p => followedUsers.includes(p.userId))
+      : posts;
+    
+    return filtered.filter(p => !deletedPostIds.includes(p.id) && !deletedPostIds.includes(p.originalPostId || ''));
+  }, [activeTab, posts, followedUsers, deletedPostIds]);
 
   const chatUsers = useMemo(() => MOCK_USERS.slice(0, 15), []);
 
@@ -1072,6 +1157,14 @@ const styles = StyleSheet.create({
   videoWrapper: {
     position: 'relative',
     width: '100%',
+  },
+  videoTouchOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 5,
   },
   postImage: {
     width: '100%',
