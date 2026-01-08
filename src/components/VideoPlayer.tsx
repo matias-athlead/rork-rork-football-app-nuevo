@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Play, Volume2, VolumeX, Pause } from 'lucide-react-native';
+import { Play, Volume2, VolumeX } from 'lucide-react-native';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 
@@ -29,19 +29,14 @@ export default function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [isHolding, setIsHolding] = useState(false);
   const [hasError, setHasError] = useState(false);
   const videoRef = useRef<Video>(null);
   const isMounted = useRef(true);
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current);
-      }
     };
   }, []);
 
@@ -58,7 +53,7 @@ export default function VideoPlayer({
       try {
         if (Platform.OS === 'web') {
           const video = videoRef.current as any;
-          if (isVisible && isFocused && !isHolding) {
+          if (isVisible && isFocused) {
             await video.play();
             if (isMounted.current) setIsPlaying(true);
           } else {
@@ -66,7 +61,7 @@ export default function VideoPlayer({
             if (isMounted.current) setIsPlaying(false);
           }
         } else {
-          if (isVisible && isFocused && !isHolding) {
+          if (isVisible && isFocused) {
             await (videoRef.current as any).playAsync();
             if (isMounted.current) setIsPlaying(true);
           } else {
@@ -81,53 +76,36 @@ export default function VideoPlayer({
     
     const timeoutId = setTimeout(handleVisibility, 100);
     return () => clearTimeout(timeoutId);
-  }, [isVisible, isFocused, isHolding, hasError]);
+  }, [isVisible, isFocused, hasError]);
 
-  const handlePressIn = async () => {
+  const handlePress = async () => {
     if (!videoRef.current || hasError) return;
     
-    holdTimerRef.current = setTimeout(async () => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-      setIsHolding(true);
-      
-      try {
-        if (Platform.OS === 'web') {
-          (videoRef.current as any).pause();
-        } else {
-          await (videoRef.current as any).pauseAsync();
-        }
-        setIsPlaying(false);
-      } catch (e) {
-        console.log('Video pause error:', e);
-      }
-    }, 800);
-  };
-
-  const handlePressOut = async () => {
-    if (!videoRef.current || hasError) return;
-    
-    if (holdTimerRef.current) {
-      clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     
-    const wasHolding = isHolding;
-    setIsHolding(false);
-    
-    if (wasHolding && isVisible && isFocused) {
-      try {
-        if (Platform.OS === 'web') {
-          await (videoRef.current as any).play();
+    try {
+      if (Platform.OS === 'web') {
+        const video = videoRef.current as any;
+        if (isPlaying) {
+          video.pause();
+          setIsPlaying(false);
+        } else {
+          await video.play();
           setIsPlaying(true);
+        }
+      } else {
+        if (isPlaying) {
+          await (videoRef.current as any).pauseAsync();
+          setIsPlaying(false);
         } else {
           await (videoRef.current as any).playAsync();
           setIsPlaying(true);
         }
-      } catch (e) {
-        console.log('Video play error:', e);
       }
+    } catch (e) {
+      console.log('Video toggle error:', e);
     }
   };
 
@@ -181,40 +159,23 @@ export default function VideoPlayer({
 
         {showControls && (
           <Pressable 
-            onPressIn={() => {
-              if (holdTimerRef.current) {
-                clearTimeout(holdTimerRef.current);
-              }
-              holdTimerRef.current = setTimeout(() => {
-                setIsHolding(true);
-                const video = videoRef.current as any;
-                if (video) video.pause();
-                setIsPlaying(false);
-              }, 800);
-            }}
-            onPressOut={() => {
-              if (holdTimerRef.current) {
-                clearTimeout(holdTimerRef.current);
-                holdTimerRef.current = null;
-              }
-              const wasHolding = isHolding;
-              setIsHolding(false);
+            onPress={() => {
               const video = videoRef.current as any;
-              if (video && wasHolding && isVisible && isFocused) {
+              if (!video) return;
+              
+              if (isPlaying) {
+                video.pause();
+                setIsPlaying(false);
+              } else {
                 video.play();
                 setIsPlaying(true);
               }
             }}
             style={styles.controlsOverlay}
           >
-            {!isPlaying && !isHolding && (
+            {!isPlaying && (
               <View style={styles.playButton}>
                 <Play size={40} color={COLORS.white} fill={COLORS.white} />
-              </View>
-            )}
-            {isHolding && (
-              <View style={styles.pauseIndicator}>
-                <Pause size={40} color={COLORS.white} fill={COLORS.white} />
               </View>
             )}
           </Pressable>
@@ -275,18 +236,12 @@ export default function VideoPlayer({
 
       {showControls && (
         <Pressable 
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
+          onPress={handlePress}
           style={styles.controlsOverlay}
         >
-          {!isPlaying && !isHolding && (
+          {!isPlaying && (
             <View style={styles.playButton}>
               <Play size={40} color={COLORS.white} fill={COLORS.white} />
-            </View>
-          )}
-          {isHolding && (
-            <View style={styles.pauseIndicator}>
-              <Pause size={40} color={COLORS.white} fill={COLORS.white} />
             </View>
           )}
         </Pressable>

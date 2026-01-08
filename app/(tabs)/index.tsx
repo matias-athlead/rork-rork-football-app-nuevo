@@ -419,6 +419,17 @@ export default function HomeScreen() {
     setSendSearchQuery('');
   };
 
+  const handleQuickSend = (userId: string, username: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    Alert.alert('Sent!', `Post sent to ${username}`);
+    setShowSendModal(false);
+    setSelectedUsers([]);
+    setSelectedPost(null);
+    setSendSearchQuery('');
+  };
+
   const handleDoubleTap = (postId: string) => {
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -542,7 +553,7 @@ export default function HomeScreen() {
         onLongPress={() => handleLongPress(item)}
         delayLongPress={500}
       >
-        <View style={styles.videoWrapper}>
+        <View style={[styles.videoWrapper, { aspectRatio: item.aspectRatio || '9/16' }]}>
           {isReposted && item.repostedByPhoto && (
             <View style={styles.repostBadge}>
               <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
@@ -553,7 +564,7 @@ export default function HomeScreen() {
           )}
           <VideoPlayer
             uri={item.videoUrl}
-            style={styles.postImage}
+            style={[styles.postImage, { aspectRatio: item.aspectRatio || '9/16' }]}
             autoPlay={false}
             loop={true}
             showControls={true}
@@ -802,6 +813,23 @@ export default function HomeScreen() {
                 <Text style={[styles.sendModalCancel, { color: COLORS.skyBlue }]}>Cancel</Text>
               </Pressable>
             </View>
+            <View style={styles.frequentContactsSection}>
+              <Text style={[styles.frequentContactsTitle, { color: theme.textSecondary }]}>Frequent</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.frequentContactsScroll}>
+                {chatUsers.slice(0, 8).map((user) => (
+                  <Pressable
+                    key={user.id}
+                    onPress={() => handleQuickSend(user.id, user.username)}
+                    style={styles.frequentContactItem}
+                  >
+                    <Image source={{ uri: user.profilePhoto }} style={styles.frequentContactAvatar} />
+                    <Text style={[styles.frequentContactName, { color: theme.text }]} numberOfLines={1}>
+                      {user.username}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
             <View style={[styles.sendModalSearchContainer, { backgroundColor: theme.inputBackground }]}>
               <Search size={18} color={theme.textSecondary} />
               <TextInput
@@ -1033,7 +1061,6 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: 400,
   },
   metadataOverlay: {
     position: 'absolute',
@@ -1238,5 +1265,37 @@ const styles = StyleSheet.create({
   },
   sendModalEmptyText: {
     fontSize: 15,
+  },
+  frequentContactsSection: {
+    paddingVertical: 16,
+    paddingLeft: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  frequentContactsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  frequentContactsScroll: {
+    flexDirection: 'row',
+  },
+  frequentContactItem: {
+    alignItems: 'center',
+    marginRight: 16,
+    width: 64,
+  },
+  frequentContactAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: 6,
+  },
+  frequentContactName: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
