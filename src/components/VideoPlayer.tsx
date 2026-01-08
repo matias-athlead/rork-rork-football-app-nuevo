@@ -32,6 +32,8 @@ export default function VideoPlayer({
   const [hasError, setHasError] = useState(false);
   const videoRef = useRef<Video>(null);
   const isMounted = useRef(true);
+  const lastPauseToggle = useRef<number>(0);
+  const PAUSE_COOLDOWN = 1000;
 
   useEffect(() => {
     isMounted.current = true;
@@ -80,6 +82,15 @@ export default function VideoPlayer({
 
   const handlePress = async () => {
     if (!videoRef.current || hasError) return;
+    
+    const now = Date.now();
+    const timeSinceLastToggle = now - lastPauseToggle.current;
+    
+    if (timeSinceLastToggle < PAUSE_COOLDOWN) {
+      return;
+    }
+    
+    lastPauseToggle.current = now;
     
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -163,6 +174,15 @@ export default function VideoPlayer({
               const video = videoRef.current as any;
               if (!video) return;
               
+              const now = Date.now();
+              const timeSinceLastToggle = now - lastPauseToggle.current;
+              
+              if (timeSinceLastToggle < PAUSE_COOLDOWN) {
+                return;
+              }
+              
+              lastPauseToggle.current = now;
+              
               if (isPlaying) {
                 video.pause();
                 setIsPlaying(false);
@@ -183,7 +203,8 @@ export default function VideoPlayer({
 
         {showControls && !forceMute && (
           <Pressable 
-            onPress={() => {
+            onPress={(e) => {
+              e.stopPropagation();
               setIsMuted(!isMuted);
               const video = videoRef.current as any;
               if (video) video.muted = !isMuted;
