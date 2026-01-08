@@ -40,6 +40,20 @@ export default function HomeScreen() {
   const lastTapMap = useRef<{[key: string]: number}>({});
   const likeAnimationMap = useRef<{[key: string]: Animated.Value}>({});
 
+  const convertAspectRatio = (ratio?: string): number | 'auto' => {
+    if (!ratio) return 9/16;
+    if (ratio === 'auto') return 'auto';
+    if (ratio.includes(':')) {
+      const [w, h] = ratio.split(':').map(Number);
+      return w / h;
+    }
+    if (ratio.includes('/')) {
+      const [w, h] = ratio.split('/').map(Number);
+      return w / h;
+    }
+    return 9/16;
+  };
+
   const viewabilityConfig: ViewabilityConfig = {
     itemVisiblePercentThreshold: 50,
   };
@@ -553,7 +567,7 @@ export default function HomeScreen() {
         onLongPress={() => handleLongPress(item)}
         delayLongPress={500}
       >
-        <View style={[styles.videoWrapper, { aspectRatio: item.aspectRatio || '9/16' }]}>
+        <View style={[styles.videoWrapper, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}>
           {isReposted && item.repostedByPhoto && (
             <View style={styles.repostBadge}>
               <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
@@ -564,7 +578,7 @@ export default function HomeScreen() {
           )}
           <VideoPlayer
             uri={item.videoUrl}
-            style={[styles.postImage, { aspectRatio: item.aspectRatio || '9/16' }]}
+            style={[styles.postImage, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}
             autoPlay={false}
             loop={true}
             showControls={true}
