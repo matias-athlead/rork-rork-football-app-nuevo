@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, Platform, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Phone, Mic, MicOff, Video, VideoOff, Camera } from 'lucide-react-native';
+import { Phone, Mic, MicOff, Video, VideoOff, Camera, CameraOff } from 'lucide-react-native';
+import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useAuth } from '@/src/hooks/useAuth';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
@@ -16,10 +17,68 @@ export default function VideoCallScreen() {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(true);
+  const [hasAllPermissions, setHasAllPermissions] = useState(false);
+
+  const [, requestCameraPermission] = useCameraPermissions();
+  const [, requestMicPermission] = useMicrophonePermissions();
 
   const callingUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
 
+  const requestPermissions = useCallback(async () => {
+    try {
+      if (Platform.OS === 'web') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          stream.getTracks().forEach(track => track.stop());
+          setHasAllPermissions(true);
+        } catch {
+          setHasAllPermissions(false);
+          Alert.alert(
+            'Camera & Microphone Required',
+            'Please allow camera and microphone access to make video calls.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        }
+        setIsRequesting(false);
+        return;
+      }
+
+      const cameraResult = await requestCameraPermission();
+      const micResult = await requestMicPermission();
+
+      const allGranted = cameraResult.granted && micResult.granted;
+      setHasAllPermissions(allGranted);
+
+      if (!allGranted) {
+        const missingPermissions = [];
+        if (!cameraResult.granted) missingPermissions.push('Camera');
+        if (!micResult.granted) missingPermissions.push('Microphone');
+
+        Alert.alert(
+          'Permissions Required',
+          `Please allow ${missingPermissions.join(' and ')} access to make video calls.`,
+          [
+            { text: 'Cancel', onPress: () => router.back(), style: 'cancel' },
+            { text: 'Try Again', onPress: () => requestPermissions() },
+          ]
+        );
+      }
+    } catch (error) {
+      console.log('Error requesting permissions:', error);
+      setHasAllPermissions(false);
+    } finally {
+      setIsRequesting(false);
+    }
+  }, [router, requestCameraPermission, requestMicPermission]);
+
   useEffect(() => {
+    requestPermissions();
+  }, [requestPermissions]);
+
+  useEffect(() => {
+    if (!hasAllPermissions || isRequesting) return;
+
     const connectTimer = setTimeout(() => {
       setIsConnected(true);
       if (Platform.OS !== 'web') {
@@ -28,7 +87,7 @@ export default function VideoCallScreen() {
     }, 2000);
 
     return () => clearTimeout(connectTimer);
-  }, []);
+  }, [hasAllPermissions, isRequesting]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -66,6 +125,33 @@ export default function VideoCallScreen() {
     }
     setIsVideoOff(!isVideoOff);
   };
+
+  if (isRequesting) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.permissionContainer}>
+          <Camera size={64} color={COLORS.white} />
+          <Text style={styles.permissionTitle}>Requesting Permissions</Text>
+          <Text style={styles.permissionText}>Please allow camera and microphone access to make video calls</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!hasAllPermissions) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.permissionContainer}>
+          <CameraOff size={64} color={COLORS.white} />
+          <Text style={styles.permissionTitle}>Permissions Denied</Text>
+          <Text style={styles.permissionText}>Please enable camera and microphone access in your device settings to make video calls</Text>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -150,6 +236,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    gap: 16,
+  },
+  permissionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.white,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  permissionText: {
+    fontSize: 16,
+    color: COLORS.white,
+    opacity: 0.8,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  backBtn: {
+    marginTop: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 25,
+  },
+  backBtnText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
   remoteVideoContainer: {
     flex: 1,

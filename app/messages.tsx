@@ -1,12 +1,47 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, TextInput, Modal, Alert, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Search, Plus, X, Users } from 'lucide-react-native';
+import { ArrowLeft, Search, Plus, X, Users, Camera, Play } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+
+interface GroupChat {
+  id: string;
+  name: string;
+  photo: string;
+  members: string[];
+  createdAt: string;
+  lastMessage?: string;
+  lastMessageTime?: string;
+}
+
+interface SharedPost {
+  id: string;
+  userId: string;
+  username: string;
+  userPhoto: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  caption: string;
+}
+
+interface ChatPreview {
+  id: string;
+  type: 'direct' | 'group';
+  name: string;
+  photo: string;
+  lastMessage: string;
+  timestamp: string;
+  unread: boolean;
+  sharedPost?: SharedPost;
+}
+
+const GROUPS_KEY = '@athlead_groups';
 
 export default function MessagesScreen() {
   const { theme } = useTheme();
@@ -15,23 +50,118 @@ export default function MessagesScreen() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [groups, setGroups] = useState<GroupChat[]>([]);
+  const [groupPhoto, setGroupPhoto] = useState<string | null>(null);
+  const [chatPreviews, setChatPreviews] = useState<Record<string, { lastMessage: string; sharedPost?: SharedPost }>>({});
 
-  const chats = MOCK_USERS.slice(0, 15).map((user, index) => ({
-    id: user.id,
-    user,
-    lastMessage: 'Hey! How are you doing?',
-    timestamp: `${index + 1}h ago`,
-    unread: index % 3 === 0,
+  useEffect(() => {
+    loadGroups();
+    loadChatPreviews();
+  }, []);
+
+  const loadGroups = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(GROUPS_KEY);
+      if (stored) {
+        setGroups(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.log('Error loading groups:', error);
+    }
+  };
+
+  const loadChatPreviews = async () => {
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const messageKeys = allKeys.filter(key => key.startsWith('@chat_messages_'));
+      const previews: Record<string, { lastMessage: string; sharedPost?: SharedPost }> = {};
+      
+      for (const key of messageKeys) {
+        const chatId = key.replace('@chat_messages_', '');
+        const messagesData = await AsyncStorage.getItem(key);
+        if (messagesData) {
+          const messages = JSON.parse(messagesData);
+          if (messages.length > 0) {
+            const lastMsg = messages[messages.length - 1];
+            previews[chatId] = {
+              lastMessage: lastMsg.text || (lastMsg.postData ? 'Shared a post' : 'Sent a photo'),
+              sharedPost: lastMsg.postData,
+            };
+          }
+        }
+      }
+      setChatPreviews(previews);
+    } catch (error) {
+      console.log('Error loading chat previews:', error);
+    }
+  };
+
+  const saveGroups = async (updatedGroups: GroupChat[]) => {
+    try {
+      await AsyncStorage.setItem(GROUPS_KEY, JSON.stringify(updatedGroups));
+    } catch (error) {
+      console.log('Error saving groups:', error);
+    }
+  };
+
+  const directChats: ChatPreview[] = MOCK_USERS.slice(0, 15).map((user, index) => {
+    const preview = chatPreviews[user.id];
+    return {
+      id: user.id,
+      type: 'direct' as const,
+      name: user.username,
+      photo: user.profilePhoto,
+      lastMessage: preview?.lastMessage || 'Hey! How are you doing?',
+      timestamp: `${index + 1}h ago`,
+      unread: index % 3 === 0,
+      sharedPost: preview?.sharedPost,
+    };
+  });
+
+  const groupChats: ChatPreview[] = groups.map((group) => ({
+    id: `group_${group.id}`,
+    type: 'group' as const,
+    name: group.name,
+    photo: group.photo,
+    lastMessage: group.lastMessage || 'Group created',
+    timestamp: group.lastMessageTime || 'Just now',
+    unread: false,
   }));
 
   const filteredChats = useMemo(() => {
-    if (!searchQuery.trim()) return chats;
+    const allChats = [...groupChats, ...directChats];
+    if (!searchQuery.trim()) return allChats;
     const query = searchQuery.toLowerCase();
-    return chats.filter(chat => 
-      chat.user.username.toLowerCase().includes(query) ||
+    return allChats.filter(chat => 
+      chat.name.toLowerCase().includes(query) ||
       chat.lastMessage.toLowerCase().includes(query)
     );
-  }, [searchQuery, chats]);
+  }, [searchQuery, groupChats, directChats]);
+
+  const handlePickGroupPhoto = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant permission to access photos');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setGroupPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error picking group photo:', error);
+    }
+  };
 
   const handleToggleUser = (userId: string) => {
     if (Platform.OS !== 'web') {
@@ -44,7 +174,7 @@ export default function MessagesScreen() {
     );
   };
 
-  const handleCreateGroup = () => {
+  const handleCreateGroup = async () => {
     if (!groupName.trim()) {
       Alert.alert('Error', 'Please enter a group name');
       return;
@@ -56,13 +186,36 @@ export default function MessagesScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    Alert.alert('Success', `Group "${groupName}" created with ${selectedUsers.length} members!`);
+
+    const newGroup: GroupChat = {
+      id: Date.now().toString(),
+      name: groupName.trim(),
+      photo: groupPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=60A5FA&color=fff&size=200`,
+      members: selectedUsers,
+      createdAt: new Date().toISOString(),
+      lastMessage: 'Group created',
+      lastMessageTime: 'Just now',
+    };
+
+    const updatedGroups = [newGroup, ...groups];
+    setGroups(updatedGroups);
+    await saveGroups(updatedGroups);
+
+    Alert.alert('Success', `Group "${groupName}" created!`, [
+      {
+        text: 'Open Chat',
+        onPress: () => router.push(`/chat/group_${newGroup.id}` as any),
+      },
+      { text: 'OK' },
+    ]);
+    
     setShowCreateGroup(false);
     setGroupName('');
     setSelectedUsers([]);
+    setGroupPhoto(null);
   };
 
-  const renderChat = ({ item }: { item: typeof chats[0] }) => (
+  const renderChat = ({ item }: { item: ChatPreview }) => (
     <Pressable
       onPress={() => router.push(`/chat/${item.id}` as any)}
       style={[
@@ -70,20 +223,44 @@ export default function MessagesScreen() {
         { backgroundColor: item.unread ? `${COLORS.skyBlue}10` : 'transparent' },
       ]}
     >
-      <Image source={{ uri: item.user.profilePhoto }} style={styles.avatar} />
+      <View style={styles.avatarContainer}>
+        <Image source={{ uri: item.photo }} style={styles.avatar} />
+        {item.type === 'group' && (
+          <View style={styles.groupBadge}>
+            <Users size={10} color={COLORS.white} />
+          </View>
+        )}
+      </View>
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
-          <Text style={[styles.username, { color: theme.text }]}>{item.user.username}</Text>
+          <Text style={[styles.username, { color: theme.text }]}>{item.name}</Text>
           <Text style={[styles.timestamp, { color: theme.textSecondary }]}>
             {item.timestamp}
           </Text>
         </View>
-        <Text
-          style={[styles.lastMessage, { color: item.unread ? theme.text : theme.textSecondary }]}
-          numberOfLines={1}
-        >
-          {item.lastMessage}
-        </Text>
+        {item.sharedPost ? (
+          <View style={styles.sharedPostPreview}>
+            <View style={styles.sharedPostThumbnailContainer}>
+              <Image source={{ uri: item.sharedPost.thumbnailUrl }} style={styles.sharedPostThumbnail} />
+              <View style={styles.playIconSmall}>
+                <Play size={8} color={COLORS.white} fill={COLORS.white} />
+              </View>
+            </View>
+            <View style={styles.sharedPostInfo}>
+              <Text style={[styles.sharedPostLabel, { color: COLORS.skyBlue }]}>Shared post</Text>
+              <Text style={[styles.sharedPostCaption, { color: theme.textSecondary }]} numberOfLines={1}>
+                {item.sharedPost.caption || `Video by @${item.sharedPost.username}`}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text
+            style={[styles.lastMessage, { color: item.unread ? theme.text : theme.textSecondary }]}
+            numberOfLines={1}
+          >
+            {item.lastMessage}
+          </Text>
+        )}
       </View>
       {item.unread && <View style={styles.unreadBadge} />}
     </Pressable>
@@ -152,6 +329,17 @@ export default function MessagesScreen() {
             </View>
 
             <View style={styles.modalForm}>
+              <Pressable onPress={handlePickGroupPhoto} style={styles.groupPhotoSection}>
+                {groupPhoto ? (
+                  <Image source={{ uri: groupPhoto }} style={styles.groupPhotoPreview} />
+                ) : (
+                  <View style={[styles.groupPhotoPlaceholder, { backgroundColor: theme.inputBackground }]}>
+                    <Camera size={32} color={theme.textSecondary} />
+                    <Text style={[styles.groupPhotoText, { color: theme.textSecondary }]}>Add Photo</Text>
+                  </View>
+                )}
+              </Pressable>
+
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>Group Name</Text>
                 <TextInput
@@ -232,10 +420,83 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     gap: 12,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
   avatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
+  },
+  groupBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.skyBlue,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  sharedPostPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  sharedPostThumbnailContainer: {
+    position: 'relative',
+  },
+  sharedPostThumbnail: {
+    width: 36,
+    height: 48,
+    borderRadius: 4,
+  },
+  playIconSmall: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -6 }, { translateY: -6 }],
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 6,
+    width: 12,
+    height: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sharedPostInfo: {
+    flex: 1,
+  },
+  sharedPostLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sharedPostCaption: {
+    fontSize: 13,
+  },
+  groupPhotoSection: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  groupPhotoPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  groupPhotoPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  groupPhotoText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   chatContent: {
     flex: 1,
