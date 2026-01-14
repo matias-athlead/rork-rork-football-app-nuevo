@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Platform, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Phone, Mic, MicOff, Video, VideoOff, Camera, CameraOff } from 'lucide-react-native';
-import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { Phone, Mic, MicOff, Video, VideoOff, Camera, CameraOff, RefreshCw } from 'lucide-react-native';
+import { useCameraPermissions, useMicrophonePermissions, CameraView, CameraType } from 'expo-camera';
 import { useAuth } from '@/src/hooks/useAuth';
 import { MOCK_USERS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
@@ -19,6 +19,8 @@ export default function VideoCallScreen() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isRequesting, setIsRequesting] = useState(true);
   const [hasAllPermissions, setHasAllPermissions] = useState(false);
+  const [cameraType, setCameraType] = useState<CameraType>('front');
+  const cameraRef = useRef<CameraView>(null);
 
   const [, requestCameraPermission] = useCameraPermissions();
   const [, requestMicPermission] = useMicrophonePermissions();
@@ -126,6 +128,13 @@ export default function VideoCallScreen() {
     setIsVideoOff(!isVideoOff);
   };
 
+  const handleFlipCamera = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setCameraType(current => (current === 'back' ? 'front' : 'back'));
+  };
+
   if (isRequesting) {
     return (
       <SafeAreaView style={styles.container}>
@@ -174,17 +183,28 @@ export default function VideoCallScreen() {
       </View>
 
       <View style={styles.localVideoContainer}>
-        {user && (
-          <Image
-            source={{ uri: user.profilePhoto }}
+        {!isVideoOff && hasAllPermissions && Platform.OS !== 'web' ? (
+          <CameraView
+            ref={cameraRef}
             style={styles.localVideo}
-            contentFit="cover"
+            facing={cameraType}
+            mirror={cameraType === 'front'}
           />
-        )}
-        {isVideoOff && (
-          <View style={styles.videoOffOverlay}>
-            <VideoOff size={32} color={COLORS.white} />
-          </View>
+        ) : (
+          <>
+            {user && (
+              <Image
+                source={{ uri: user.profilePhoto }}
+                style={styles.localVideo}
+                contentFit="cover"
+              />
+            )}
+            {isVideoOff && (
+              <View style={styles.videoOffOverlay}>
+                <VideoOff size={32} color={COLORS.white} />
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -213,14 +233,10 @@ export default function VideoCallScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => {
-              if (Platform.OS !== 'web') {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              }
-            }}
+            onPress={handleFlipCamera}
             style={styles.controlButton}
           >
-            <Camera size={28} color={COLORS.white} />
+            <RefreshCw size={28} color={COLORS.white} />
           </Pressable>
         </View>
 

@@ -235,7 +235,7 @@ export default function ChatScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -915,8 +915,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   messageImage: {
-    width: 200,
-    height: 250,
+    width: 220,
+    height: undefined,
+    minHeight: 100,
+    maxHeight: 350,
+    aspectRatio: undefined,
     borderRadius: 12,
   },
   mediaTypeBadge: {
