@@ -1033,7 +1033,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 6,
     borderBottomWidth: 1,
   },
   logo: {
@@ -1052,11 +1052,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 4,
     gap: 24,
   },
   tab: {
-    paddingVertical: 8,
+    paddingVertical: 4,
     paddingHorizontal: 16,
   },
   tabActive: {
@@ -1068,7 +1068,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 8,
   },
   postCard: {
     marginBottom: 24,

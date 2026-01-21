@@ -41,10 +41,64 @@ export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const user = MOCK_USERS.find(u => u.email === credentials.email);
+    if (!credentials.email || !credentials.password) {
+      throw new Error('Email and password are required');
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(credentials.email)) {
+      throw new Error('Invalid email format');
+    }
+
+    if (credentials.password.length < 4) {
+      throw new Error('Password must be at least 4 characters');
+    }
+
+    let user = MOCK_USERS.find(u => u.email === credentials.email);
     
     if (!user) {
-      throw new Error('Invalid credentials');
+      const username = credentials.email.split('@')[0];
+      user = {
+        id: `user_${Date.now()}`,
+        email: credentials.email,
+        username: username,
+        fullName: username.charAt(0).toUpperCase() + username.slice(1),
+        role: 'player',
+        profilePhoto: `https://i.pravatar.cc/300?u=${credentials.email}`,
+        coverPhoto: 'https://images.unsplash.com/photo-1540747913346-19e32778a8e?w=800&h=300&fit=crop',
+        bio: '',
+        followers: 0,
+        following: 0,
+        isPrivate: false,
+        isPremium: false,
+        createdAt: new Date().toISOString(),
+        birthdate: '1995-01-01',
+        city: '',
+        federation: 'RFEF',
+        age: 25,
+        currentClub: '',
+        positions: [],
+        stats: {
+          speed: 0,
+          power: 0,
+          sprints: 0,
+          offBallRuns: 0,
+          dribbles: 0,
+          passAccuracy: 0,
+          goals: 0,
+          assists: 0,
+          minutes: 0,
+          matchesPlayed: 0,
+          shotsOnTarget: 0,
+        },
+        radarStats: {
+          speed: 0,
+          passPercentage: 0,
+          goalPercentage: 0,
+          matchCompletionPercentage: 0,
+          dribbles: 0,
+        },
+      };
     }
 
     const token = generateMockToken();
@@ -325,9 +379,42 @@ export const authService = {
     };
   },
 
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string): Promise<{ success: boolean; method: string }> {
     await new Promise(resolve => setTimeout(resolve, 800));
-    console.log('Password reset email sent to:', email);
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error('Invalid email format');
+    }
+
+    console.log('Password reset requested for:', email);
+    
+    const resetCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const RESET_CODES_KEY = '@athlead_reset_codes';
+    
+    try {
+      const existingCodes = await AsyncStorage.getItem(RESET_CODES_KEY);
+      const codes = existingCodes ? JSON.parse(existingCodes) : {};
+      codes[email] = {
+        code: resetCode,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      };
+      await AsyncStorage.setItem(RESET_CODES_KEY, JSON.stringify(codes));
+    } catch (error) {
+      console.log('Error storing reset code:', error);
+    }
+
+    return { success: true, method: 'email' };
+  },
+
+  async sendResetEmail(email: string): Promise<{ subject: string; body: string }> {
+    const resetCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    const subject = 'Athlead - Password Reset';
+    const body = `Hello,\n\nYou have requested to reset your password for Athlead.\n\nYour reset code is: ${resetCode}\n\nThis code will expire in 30 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe Athlead Team`;
+    
+    return { subject, body };
   },
 
   async updateUser(user: User): Promise<User> {

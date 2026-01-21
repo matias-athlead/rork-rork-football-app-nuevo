@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, Platform, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Mail, ArrowLeft, Check } from 'lucide-react-native';
+import { Mail, ArrowLeft, Check, ExternalLink } from 'lucide-react-native';
+import * as MailComposer from 'expo-mail-composer';
 import { useTheme } from '@/src/hooks/useTheme';
 import { authService } from '@/src/services/authService';
 import { COLORS } from '@/src/utils/theme';
@@ -20,12 +21,36 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await authService.forgotPassword(email);
+      
+      const isMailAvailable = await MailComposer.isAvailableAsync();
+      
+      if (isMailAvailable) {
+        const { subject, body } = await authService.sendResetEmail(email);
+        
+        await MailComposer.composeAsync({
+          recipients: [email],
+          subject: subject,
+          body: body,
+        });
+      } else if (Platform.OS === 'web') {
+        const { subject, body } = await authService.sendResetEmail(email);
+        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        await Linking.openURL(mailtoLink);
+      }
+      
       setEmailSent(true);
-    } catch {
-      Alert.alert('Error', 'Failed to send reset email');
+    } catch (error: any) {
+      console.log('Reset password error:', error);
+      Alert.alert('Error', error.message || 'Failed to send reset email');
     } finally {
       setIsLoading(false);
     }
