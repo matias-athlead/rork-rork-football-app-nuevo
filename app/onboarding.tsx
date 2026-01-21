@@ -144,11 +144,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   slide: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
+    paddingBottom: 80,
   },
   iconContainer: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 40,
   },
   title: {
