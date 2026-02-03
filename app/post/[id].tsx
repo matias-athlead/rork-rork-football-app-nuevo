@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform, Animated, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share, Download } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
@@ -11,6 +11,9 @@ import VideoPlayer from '@/src/components/VideoPlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
+import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
+import { File, Paths } from 'expo-file-system';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
@@ -196,14 +199,6 @@ export default function PostDetailScreen() {
     );
   };
 
-  const handleShare = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setShowOptionsMenu(false);
-    setShowShareModal(true);
-  };
-
   const handleRepost = async () => {
     if (!user || !post) return;
     if (Platform.OS !== 'web') {
@@ -337,6 +332,89 @@ export default function PostDetailScreen() {
     lastTap.current = now;
   };
 
+  const handleLongPress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    setShowOptionsMenu(true);
+  };
+
+  const handleShareOutside = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setShowOptionsMenu(false);
+    try {
+      if (Platform.OS === 'web') {
+        if (navigator.share) {
+          await navigator.share({
+            title: `${post.username}'s post`,
+            text: post.caption,
+            url: post.videoUrl
+          });
+        } else {
+          await navigator.clipboard.writeText(post.videoUrl);
+          alert('Link copied to clipboard!');
+        }
+      } else {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(post.videoUrl, {
+            dialogTitle: `Share ${post.username}'s post`
+          });
+        }
+      }
+    } catch (error) {
+      console.log('Share error:', error);
+    }
+  };
+
+  const handleDownloadVideo = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowOptionsMenu(false);
+    
+    if (Platform.OS === ('web' as any)) {
+      try {
+        const link = document.createElement('a');
+        link.href = post.videoUrl;
+        link.download = `${post.username}_video.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        Alert.alert('Download Started', 'Your video download has started');
+      } catch (error) {
+        console.log('Download error:', error);
+        Alert.alert('Error', 'Could not download video');
+      }
+    } else {
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'We need permission to save videos to your library');
+          return;
+        }
+
+        Alert.alert('Downloading', 'Your video is being downloaded...');
+        const downloadedFile = await File.downloadFileAsync(post.videoUrl, Paths.cache);
+        
+        if (downloadedFile && downloadedFile.exists) {
+          const asset = await MediaLibrary.createAssetAsync(downloadedFile.uri);
+          await MediaLibrary.createAlbumAsync('Athlead', asset, false);
+          
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          Alert.alert('Success', 'Video saved to your gallery!');
+        }
+      } catch (error) {
+        console.log('Download error:', error);
+        Alert.alert('Error', 'Failed to download video');
+      }
+    }
+  };
+
   const handleLocationPress = async () => {
     if (!post?.location) return;
     if (Platform.OS !== 'web') {
@@ -404,7 +482,12 @@ export default function PostDetailScreen() {
       </View>
 
       <ScrollView ref={scrollViewRef}>
-        <Pressable onPress={handleDoubleTap} style={styles.videoContainer}>
+        <Pressable 
+          onPress={handleDoubleTap} 
+          onLongPress={handleLongPress}
+          delayLongPress={800}
+          style={styles.videoContainer}
+        >
           {post.mediaType === 'video' || post.videoUrl ? (
             <VideoPlayer
               uri={post.videoUrl}
@@ -572,9 +655,14 @@ export default function PostDetailScreen() {
                   <Text style={[styles.optionText, { color: theme.text }]}>Report</Text>
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
-                <Pressable onPress={handleShare} style={styles.optionItem}>
+                <Pressable onPress={handleShareOutside} style={styles.optionItem}>
                   <Share size={22} color={theme.text} />
                   <Text style={[styles.optionText, { color: theme.text }]}>Share Outside App</Text>
+                </Pressable>
+                <View style={[styles.separator, { backgroundColor: theme.border }]} />
+                <Pressable onPress={handleDownloadVideo} style={styles.optionItem}>
+                  <Download size={22} color={theme.text} />
+                  <Text style={[styles.optionText, { color: theme.text }]}>Download Video</Text>
                 </Pressable>
                 <View style={[styles.separator, { backgroundColor: theme.border }]} />
                 <Pressable onPress={handleBlockUser} style={styles.optionItem}>

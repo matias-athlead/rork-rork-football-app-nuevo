@@ -6,7 +6,7 @@ import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS, MOCK_USERS } from '@/src/services/mockData';
 import { Post } from '@/src/types/Post';
@@ -573,7 +573,7 @@ export default function HomeScreen() {
     }
     setShowLongPressMenu(false);
     
-    if (Platform.OS === 'web') {
+    if (Platform.OS === ('web' as any)) {
       try {
         const link = document.createElement('a');
         link.href = post.videoUrl;
@@ -594,20 +594,16 @@ export default function HomeScreen() {
           return;
         }
 
-        const fileUri = `${FileSystem.documentDirectory!}${post.username}_${Date.now()}.mp4`;
-        const downloadResumable = FileSystem.createDownloadResumable(
-          post.videoUrl,
-          fileUri
-        );
-
         Alert.alert('Downloading', 'Your video is being downloaded...');
-        const result = await downloadResumable.downloadAsync();
+        const downloadedFile = await File.downloadFileAsync(post.videoUrl, Paths.cache);
         
-        if (result && result.uri) {
-          const asset = await MediaLibrary.createAssetAsync(result.uri);
+        if (downloadedFile && downloadedFile.exists) {
+          const asset = await MediaLibrary.createAssetAsync(downloadedFile.uri);
           await MediaLibrary.createAlbumAsync('Athlead', asset, false);
           
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
           Alert.alert('Success', 'Video saved to your gallery!');
         }
       } catch (error) {
