@@ -6,7 +6,7 @@ import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
-import { documentDirectory, createDownloadResumable } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS, MOCK_USERS } from '@/src/services/mockData';
 import { Post } from '@/src/types/Post';
@@ -594,8 +594,8 @@ export default function HomeScreen() {
           return;
         }
 
-        const fileUri = `${documentDirectory!}${post.username}_${Date.now()}.mp4`;
-        const downloadResumable = createDownloadResumable(
+        const fileUri = `${FileSystem.documentDirectory!}${post.username}_${Date.now()}.mp4`;
+        const downloadResumable = FileSystem.createDownloadResumable(
           post.videoUrl,
           fileUri
         );
