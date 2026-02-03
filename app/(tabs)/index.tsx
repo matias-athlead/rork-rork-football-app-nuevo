@@ -594,7 +594,7 @@ export default function HomeScreen() {
           return;
         }
 
-        const fileUri = `${FileSystem.documentDirectory}${post.username}_${Date.now()}.mp4`;
+        const fileUri = `${FileSystem.documentDirectory!}${post.username}_${Date.now()}.mp4`;
         const downloadResumable = FileSystem.createDownloadResumable(
           post.videoUrl,
           fileUri
@@ -607,9 +607,7 @@ export default function HomeScreen() {
           const asset = await MediaLibrary.createAssetAsync(result.uri);
           await MediaLibrary.createAlbumAsync('Athlead', asset, false);
           
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert('Success', 'Video saved to your gallery!');
         }
       } catch (error) {
