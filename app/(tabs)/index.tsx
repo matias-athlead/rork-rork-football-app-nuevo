@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X } from 'lucide-react-native';
+import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X, Download } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS, MOCK_USERS } from '@/src/services/mockData';
 import { Post } from '@/src/types/Post';
@@ -526,7 +528,7 @@ export default function HomeScreen() {
 
   const handleDoubleTap = (postId: string) => {
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
+    const DOUBLE_TAP_DELAY = 500;
     const lastTap = lastTapMap.current[postId] || 0;
 
     if (now - lastTap < DOUBLE_TAP_DELAY) {
@@ -563,6 +565,58 @@ export default function HomeScreen() {
     }
     setSelectedPost(post);
     setShowLongPressMenu(true);
+  };
+
+  const handleDownloadVideo = async (post: Post) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowLongPressMenu(false);
+    
+    if (Platform.OS === 'web') {
+      try {
+        const link = document.createElement('a');
+        link.href = post.videoUrl;
+        link.download = `${post.username}_video.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        Alert.alert('Download Started', 'Your video download has started');
+      } catch (error) {
+        console.log('Download error:', error);
+        Alert.alert('Error', 'Could not download video');
+      }
+    } else {
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'We need permission to save videos to your library');
+          return;
+        }
+
+        const fileUri = `${FileSystem.documentDirectory}${post.username}_${Date.now()}.mp4`;
+        const downloadResumable = FileSystem.createDownloadResumable(
+          post.videoUrl,
+          fileUri
+        );
+
+        Alert.alert('Downloading', 'Your video is being downloaded...');
+        const result = await downloadResumable.downloadAsync();
+        
+        if (result && result.uri) {
+          const asset = await MediaLibrary.createAssetAsync(result.uri);
+          await MediaLibrary.createAlbumAsync('Athlead', asset, false);
+          
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          Alert.alert('Success', 'Video saved to your gallery!');
+        }
+      } catch (error) {
+        console.log('Download error:', error);
+        Alert.alert('Error', 'Failed to download video');
+      }
+    }
   };
 
   const handleFollowToggle = async (userId: string) => {
@@ -611,7 +665,12 @@ export default function HomeScreen() {
     const likeAnim = likeAnimationMap.current[item.id];
 
     return (
-    <View style={[styles.postCard, { backgroundColor: theme.card }]}>
+    <Pressable 
+      onPress={() => handleDoubleTap(item.id)}
+      onLongPress={() => handleLongPress(item)}
+      delayLongPress={800}
+      style={[styles.postCard, { backgroundColor: theme.card }]}
+    >
       {isReposted && (
         <View style={styles.repostHeader}>
           <Repeat2 size={14} color={theme.textSecondary} />
@@ -643,12 +702,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={[styles.videoWrapper, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}>
-        <Pressable 
-          onPress={() => handleDoubleTap(item.id)}
-          onLongPress={() => handleLongPress(item)}
-          delayLongPress={500}
-          style={styles.videoTouchOverlay}
-        >
+        <View style={styles.videoTouchOverlay}>
           {isReposted && item.repostedByPhoto && (
             <View style={styles.repostBadge}>
               <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
@@ -692,7 +746,7 @@ export default function HomeScreen() {
           >
             <Heart size={80} color={COLORS.white} fill={COLORS.white} />
           </Animated.View>
-        </Pressable>
+        </View>
       </View>
 
       <View style={styles.postActions}>
@@ -739,7 +793,7 @@ export default function HomeScreen() {
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
     );
   };
 
@@ -872,6 +926,14 @@ export default function HomeScreen() {
             >
               <Share size={24} color={theme.text} />
               <Text style={[styles.longPressText, { color: theme.text }]}>Share Outside App</Text>
+            </Pressable>
+            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
+            <Pressable 
+              onPress={() => selectedPost && handleDownloadVideo(selectedPost)} 
+              style={styles.longPressItem}
+            >
+              <Download size={24} color={theme.text} />
+              <Text style={[styles.longPressText, { color: theme.text }]}>Download Video</Text>
             </Pressable>
             <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
             <Pressable 
