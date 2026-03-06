@@ -22,16 +22,11 @@ const discovery = {
 
 export const googleAuthService = {
   async signInWithGoogle(): Promise<{ idToken: string; accessToken: string }> {
-    console.log('[Google Auth] Starting Google Sign-In flow...');
-
     const clientId = getGoogleClientId();
 
+    // Bug fix: avisar al usuario si no hay cliente ID configurado en lugar de entrar en modo demo silencioso
     if (!clientId) {
-      console.log('[Google Auth] No client ID configured - using demo mode');
-      return {
-        idToken: 'demo_id_token',
-        accessToken: 'demo_access_token'
-      };
+      throw new Error('Google Sign-In is not configured. Please contact support or use email/password to log in.');
     }
 
     try {
@@ -39,9 +34,6 @@ export const googleAuthService = {
         scheme: 'athlead',
         path: 'redirect',
       });
-
-      console.log('[Google Auth] Redirect URI:', redirectUri);
-      console.log('[Google Auth] Client ID:', clientId.substring(0, 20) + '...');
 
       const authRequestConfig: AuthSession.AuthRequestConfig = {
         clientId,
@@ -55,8 +47,6 @@ export const googleAuthService = {
       const result = await authRequest.promptAsync(discovery);
 
       if (result.type === 'success') {
-        console.log('[Google Auth] Authorization successful');
-
         const tokenResponse = await AuthSession.exchangeCodeAsync(
           {
             clientId,
@@ -75,18 +65,13 @@ export const googleAuthService = {
           throw new Error('Failed to obtain tokens from Google');
         }
 
-        console.log('[Google Auth] Tokens obtained successfully');
-
         return { idToken, accessToken };
       } else if (result.type === 'cancel') {
-        console.log('[Google Auth] User cancelled the sign-in flow');
         throw new Error('Google sign-in was cancelled');
       } else {
-        console.error('[Google Auth] Sign-in failed:', result);
         throw new Error('Google sign-in failed');
       }
     } catch (error) {
-      console.error('[Google Auth] Error during sign-in:', error);
       throw error;
     }
   },
@@ -97,16 +82,6 @@ export const googleAuthService = {
     name: string;
     picture: string;
   }> {
-    if (accessToken === 'demo_access_token') {
-      console.log('[Google Auth] Demo mode - returning mock user');
-      return {
-        id: `google_demo_${Date.now()}`,
-        email: 'googleuser@demo.com',
-        name: 'Google Demo User',
-        picture: 'https://i.pravatar.cc/300?img=60',
-      };
-    }
-
     try {
       const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -125,7 +100,6 @@ export const googleAuthService = {
         picture: userData.picture,
       };
     } catch (error) {
-      console.error('[Google Auth] Error fetching user info:', error);
       throw error;
     }
   },

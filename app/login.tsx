@@ -38,10 +38,10 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
-      await login({ email, password });
+      await login({ email, password, role });
       router.replace('/(tabs)');
-    } catch {
-      Alert.alert('Error', 'Invalid credentials. Try: any email from mock data with any password');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Invalid credentials. Please check your email and password.');
     } finally {
       setIsLoading(false);
     }

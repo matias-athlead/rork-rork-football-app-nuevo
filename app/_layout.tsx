@@ -3,7 +3,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { AuthProvider } from "@/src/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/src/hooks/useAuth";
 import { ThemeProvider } from "@/src/hooks/useTheme";
 import { PrivacySettingsProvider } from "@/src/hooks/usePrivacySettings";
 import { BlockedUsersProvider } from "@/src/hooks/useBlockedUsers";
@@ -12,7 +12,16 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+// Bug fix: SplashScreen espera a que la auth termine de cargar
 function RootLayoutNav() {
+  const { isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
+
   return (
     <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
@@ -42,10 +51,6 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
