@@ -306,7 +306,17 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.push('/(tabs)')} style={styles.backButton}>
+        <Pressable onPress={() => {
+          try {
+            if (Platform.OS !== 'web') {
+              router.back();
+            } else {
+              router.push('/(tabs)');
+            }
+          } catch {
+            router.push('/(tabs)');
+          }
+        }} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
         <Image source={{ uri: chatUser.profilePhoto }} style={styles.avatar} />

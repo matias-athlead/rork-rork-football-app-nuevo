@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, TextInput, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Camera } from 'lucide-react-native';
@@ -74,9 +74,13 @@ export default function EditProfileScreen() {
       await AsyncStorage.setItem('@user_profile', JSON.stringify(updatedUser));
       
       Alert.alert('Success', 'Profile updated successfully!');
-      if (router.canGoBack()) {
-        router.back();
-      } else {
+      try {
+        if (Platform.OS !== 'web') {
+          router.back();
+        } else {
+          router.push('/(tabs)');
+        }
+      } catch {
         router.push('/(tabs)');
       }
     } catch (error) {
@@ -91,9 +95,13 @@ export default function EditProfileScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.background }]}>
         <Pressable onPress={() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
+          try {
+            if (Platform.OS !== 'web') {
+              router.back();
+            } else {
+              router.push('/(tabs)');
+            }
+          } catch {
             router.push('/(tabs)');
           }
         }} style={styles.backButton}>
