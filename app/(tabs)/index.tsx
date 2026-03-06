@@ -2,19 +2,20 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X, Download } from 'lucide-react-native';
+import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X, Download, Video, Plus } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { File, Paths } from 'expo-file-system';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_POSTS, MOCK_USERS } from '@/src/services/mockData';
 import { Post } from '@/src/types/Post';
+import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import VideoPlayer from '@/src/components/VideoPlayer';
 import { useAuth } from '@/src/hooks/useAuth';
+import { authService } from '@/src/services/authService';
 
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 const FOLLOWED_USERS_KEY = '@athlead_followed_users';
@@ -26,7 +27,7 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
-  const [posts, setPosts] = useState(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
@@ -69,15 +70,13 @@ export default function HomeScreen() {
         if (stored) {
           setFollowedUsers(JSON.parse(stored));
         } else {
-          const randomFollowed = MOCK_USERS.slice(0, 15).map(u => u.id);
-          setFollowedUsers(randomFollowed);
-          await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(randomFollowed));
+          setFollowedUsers([]);
         }
       } catch (error) {
         console.log('Error loading followed users:', error);
       }
     };
-    loadFollowedUsers();
+    void loadFollowedUsers();
   }, []);
 
   useEffect(() => {
@@ -99,7 +98,7 @@ export default function HomeScreen() {
         console.log('Error loading user reposts:', error);
       }
     };
-    loadUserReposts();
+    void loadUserReposts();
   }, [user]);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -118,7 +117,7 @@ export default function HomeScreen() {
         console.log('Error loading deleted posts:', error);
       }
     };
-    loadDeletedPosts();
+    void loadDeletedPosts();
   }, []);
 
   useEffect(() => {
@@ -131,15 +130,15 @@ export default function HomeScreen() {
           for (const userId in allPosts) {
             userPosts.push(...allPosts[userId]);
           }
-          if (userPosts.length > 0) {
-            setPosts([...userPosts, ...MOCK_POSTS]);
-          }
+          setPosts(userPosts.sort((a: Post, b: Post) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          ));
         }
       } catch (error) {
         console.log('Error loading posts:', error);
       }
     };
-    loadPosts();
+    void loadPosts();
   }, []);
 
   useEffect(() => {
@@ -175,7 +174,7 @@ export default function HomeScreen() {
       },
       onPanResponderGrant: () => {
         if (Platform.OS !== 'web') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
       },
       onPanResponderMove: (_, gestureState) => {
@@ -191,7 +190,7 @@ export default function HomeScreen() {
         
         if (shouldNavigate) {
           if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           }
           Animated.parallel([
             Animated.timing(panX, {
@@ -230,7 +229,7 @@ export default function HomeScreen() {
 
   const handleLike = (postId: string) => {
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setPosts(posts.map(p => 
       p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p
@@ -239,14 +238,14 @@ export default function HomeScreen() {
 
   const handleComment = (postId: string) => {
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     router.push(`/post-comments/${postId}` as any);
   };
 
   const handleVote = (postId: string) => {
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setPosts(posts.map(p => 
       p.id === postId ? { ...p, votes: (p.votes || 0) + (p.isVoted ? -1 : 1), isVoted: !p.isVoted } : p
@@ -255,7 +254,7 @@ export default function HomeScreen() {
 
   const handleShareOutside = async (post: Post) => {
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setShowLongPressMenu(false);
     try {
@@ -286,7 +285,7 @@ export default function HomeScreen() {
   const handleRepost = async (post: Post) => {
     if (!user) return;
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setShowLongPressMenu(false);
 
@@ -368,7 +367,7 @@ export default function HomeScreen() {
     }
   };
 
-  const handleReport = (post: Post) => {
+  const handleReport = (_post: Post) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -799,14 +798,28 @@ export default function HomeScreen() {
     return filtered.filter(p => !deletedPostIds.includes(p.id) && !deletedPostIds.includes(p.originalPostId || ''));
   }, [activeTab, posts, followedUsers, deletedPostIds]);
 
-  const chatUsers = useMemo(() => MOCK_USERS.slice(0, 15), []);
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await authService.getAllUsers();
+        setRegisteredUsers(users);
+      } catch (error) {
+        console.log('Error loading users:', error);
+      }
+    };
+    void loadUsers();
+  }, []);
+
+  const chatUsers = useMemo(() => registeredUsers.slice(0, 15), [registeredUsers]);
 
   const filteredChatUsers = useMemo(() => {
     if (!sendSearchQuery.trim()) return chatUsers;
     const query = sendSearchQuery.toLowerCase();
-    return chatUsers.filter(user => 
-      user.username.toLowerCase().includes(query) ||
-      user.fullName.toLowerCase().includes(query)
+    return chatUsers.filter((u: User) => 
+      u.username.toLowerCase().includes(query) ||
+      u.fullName.toLowerCase().includes(query)
     );
   }, [sendSearchQuery, chatUsers]);
 
@@ -872,10 +885,35 @@ export default function HomeScreen() {
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            filteredPosts.length === 0 && styles.emptyListContent
+          ]}
           scrollEnabled={true}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyStateContainer}>
+              <View style={[styles.emptyStateIconContainer, { backgroundColor: `${COLORS.skyBlue}20` }]}>
+                <Video size={48} color={COLORS.skyBlue} />
+              </View>
+              <Text style={[styles.emptyStateTitle, { color: theme.text }]}>
+                {activeTab === 'following' ? 'No posts from followed users' : 'No videos yet'}
+              </Text>
+              <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary }]}>
+                {activeTab === 'following' 
+                  ? 'Follow users to see their content here' 
+                  : 'Be the first to share your football moments!'}
+              </Text>
+              <Pressable 
+                onPress={() => router.push('/create' as any)}
+                style={[styles.createPostButton, { backgroundColor: COLORS.skyBlue }]}
+              >
+                <Plus size={20} color={COLORS.white} />
+                <Text style={styles.createPostButtonText}>Create Your First Post</Text>
+              </Pressable>
+            </View>
+          )}
           />
         </Animated.View>
       </View>
@@ -1460,5 +1498,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  emptyListContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 60,
+  },
+  emptyStateIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptyStateSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 22,
+  },
+  createPostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 28,
+    gap: 8,
+  },
+  createPostButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

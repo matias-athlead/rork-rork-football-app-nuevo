@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Alert, Platform, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
@@ -10,9 +10,9 @@ import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MOCK_USERS } from '@/src/services/mockData';
 import { MUSIC_LIBRARY, MusicTrack } from '@/src/services/musicLibrary';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import { authService } from '@/src/services/authService';
 
 type AspectRatio = '4:3' | '4:5' | '16:9' | 'original';
 
@@ -48,6 +48,7 @@ export default function CreateScreen() {
   const [showFramePickerModal, setShowFramePickerModal] = useState(false);
   const [framePickerTime, setFramePickerTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const getAspectRatioValue = (ratio: AspectRatio): number => {
     switch (ratio) {
@@ -88,11 +89,23 @@ export default function CreateScreen() {
     captionInputRef.current?.focus();
   };
 
-  const filteredUsers = MOCK_USERS.filter(u => 
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await authService.getAllUsers();
+        setAllUsers(users);
+      } catch (error) {
+        console.log('Error loading users:', error);
+      }
+    };
+    void loadUsers();
+  }, []);
+
+  const filteredUsers = allUsers.filter(u => 
     u.username.toLowerCase().includes(mentionSearch.toLowerCase())
   ).slice(0, 10);
 
-  const clubUsers = MOCK_USERS.filter(u => u.role === 'club');
+  const clubUsers = allUsers.filter(u => u.role === 'club');
   const filteredClubs = clubUsers.filter(club => 
     club.username.toLowerCase().includes(clubSearch.toLowerCase()) ||
     club.fullName.toLowerCase().includes(clubSearch.toLowerCase())
@@ -125,13 +138,20 @@ export default function CreateScreen() {
         userId: user.id,
         username: user.username,
         userPhoto: user.profilePhoto,
+        userRole: user.role,
         videoUrl: selectedMedia,
         thumbnailUrl: coverImage || selectedMedia,
         coverImageUrl: coverImage || undefined,
         caption: caption || 'New post',
         aspectRatio,
         mediaType,
+        hashtags: [],
         taggedUsers: mentionedUsers,
+        type: 'play' as const,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        isLiked: false,
         location: location || undefined,
         musicSound: selectedMusic?.title || musicSound || undefined,
         musicUrl: selectedMusic?.url || undefined,

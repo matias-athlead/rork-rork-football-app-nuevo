@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, UserRole } from '@/src/types/User';
-import { MOCK_USERS } from './mockData';
 import { googleAuthService } from './googleAuthService';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
 const AUTH_TOKEN_KEY = '@athlead_auth_token';
 const USER_DATA_KEY = '@athlead_user_data';
+const USERS_STORAGE_KEY = '@athlead_registered_users';
 
 export interface LoginCredentials {
   email: string;
@@ -37,6 +37,31 @@ function generateMockToken(): string {
   return `mock_jwt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Guardar usuario en el registro local
+async function saveRegisteredUser(user: User, password: string): Promise<void> {
+  try {
+    const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+    const users = existingUsers ? JSON.parse(existingUsers) : {};
+    users[user.email] = { user, password };
+    await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+  } catch (error) {
+    console.log('Error saving registered user:', error);
+  }
+}
+
+// Obtener usuario registrado
+async function getRegisteredUser(email: string): Promise<{ user: User; password: string } | null> {
+  try {
+    const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+    if (!existingUsers) return null;
+    const users = JSON.parse(existingUsers);
+    return users[email] || null;
+  } catch (error) {
+    console.log('Error getting registered user:', error);
+    return null;
+  }
+}
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -54,59 +79,23 @@ export const authService = {
       throw new Error('Password must be at least 4 characters');
     }
 
-    let user = MOCK_USERS.find(u => u.email === credentials.email);
+    // Buscar usuario registrado
+    const registeredUser = await getRegisteredUser(credentials.email);
     
-    if (!user) {
-      const username = credentials.email.split('@')[0];
-      user = {
-        id: `user_${Date.now()}`,
-        email: credentials.email,
-        username: username,
-        fullName: username.charAt(0).toUpperCase() + username.slice(1),
-        role: 'player',
-        profilePhoto: `https://i.pravatar.cc/300?u=${credentials.email}`,
-        coverPhoto: 'https://images.unsplash.com/photo-1540747913346-19e32778a8e?w=800&h=300&fit=crop',
-        bio: '',
-        followers: 0,
-        following: 0,
-        isPrivate: false,
-        isPremium: false,
-        createdAt: new Date().toISOString(),
-        birthdate: '1995-01-01',
-        city: '',
-        federation: 'RFEF',
-        age: 25,
-        currentClub: '',
-        positions: [],
-        stats: {
-          speed: 0,
-          power: 0,
-          sprints: 0,
-          offBallRuns: 0,
-          dribbles: 0,
-          passAccuracy: 0,
-          goals: 0,
-          assists: 0,
-          minutes: 0,
-          matchesPlayed: 0,
-          shotsOnTarget: 0,
-        },
-        radarStats: {
-          speed: 0,
-          passPercentage: 0,
-          goalPercentage: 0,
-          matchCompletionPercentage: 0,
-          dribbles: 0,
-        },
-      };
+    if (!registeredUser) {
+      throw new Error('User not found. Please register first.');
+    }
+
+    if (registeredUser.password !== credentials.password) {
+      throw new Error('Invalid password');
     }
 
     const token = generateMockToken();
     
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
-    await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+    await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(registeredUser.user));
 
-    return { user, token };
+    return { user: registeredUser.user, token };
   },
 
   async loginWithApple(): Promise<AuthResponse> {
@@ -131,9 +120,10 @@ export const authService = {
         ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
         : 'Apple User';
 
-      let user = MOCK_USERS.find(u => u.email === email);
+      // Buscar si el usuario ya existe
+      let existingUser = await getRegisteredUser(email);
 
-      if (!user) {
+      if (!existingUser) {
         console.log('[Auth] Creating new user from Apple account');
         const newUser: User = {
           id: `apple_user_${Date.now()}`,
@@ -176,16 +166,17 @@ export const authService = {
             dribbles: 0,
           },
         };
-        user = newUser;
+        await saveRegisteredUser(newUser, `apple_${Date.now()}`);
+        existingUser = { user: newUser, password: '' };
       }
 
       const token = generateMockToken();
 
       await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
-      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(existingUser.user));
 
       console.log('[Auth] Apple login successful');
-      return { user, token };
+      return { user: existingUser.user, token };
     } catch (error: any) {
       console.error('[Auth] Apple login failed:', error);
       if (error.code === 'ERR_CANCELED') {
@@ -204,9 +195,10 @@ export const authService = {
 
       console.log('[Auth] Google user info received:', userInfo.email);
 
-      let user = MOCK_USERS.find(u => u.email === userInfo.email);
+      // Buscar si el usuario ya existe
+      let existingUser = await getRegisteredUser(userInfo.email);
 
-      if (!user) {
+      if (!existingUser) {
         console.log('[Auth] Creating new user from Google account');
         const newUser: User = {
           id: `google_user_${Date.now()}`,
@@ -249,16 +241,17 @@ export const authService = {
             dribbles: 0,
           },
         };
-        user = newUser;
+        await saveRegisteredUser(newUser, `google_${Date.now()}`);
+        existingUser = { user: newUser, password: '' };
       }
 
       const token = generateMockToken();
 
       await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
-      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(existingUser.user));
 
       console.log('[Auth] Google login successful');
-      return { user, token };
+      return { user: existingUser.user, token };
     } catch (error) {
       console.error('[Auth] Google login failed:', error);
       throw error;
@@ -268,12 +261,18 @@ export const authService = {
   async register(data: RegisterData): Promise<AuthResponse> {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // Verificar si el usuario ya existe
+    const existingUser = await getRegisteredUser(data.email);
+    if (existingUser) {
+      throw new Error('User with this email already exists');
+    }
+
     const age = data.age || 18;
     const birthYear = new Date().getFullYear() - age;
-    const birthdate = `${birthYear}-01-01`;
+    const birthdate = data.birthdate || `${birthYear}-01-01`;
 
     const baseUser = {
-      id: `new_user_${Date.now()}`,
+      id: `user_${Date.now()}`,
       email: data.email,
       username: data.username,
       fullName: data.fullName,
@@ -354,6 +353,8 @@ export const authService = {
 
     const token = generateMockToken();
 
+    // Guardar usuario registrado
+    await saveRegisteredUser(newUser, data.password);
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
     await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(newUser));
 
@@ -387,6 +388,12 @@ export const authService = {
       throw new Error('Invalid email format');
     }
 
+    // Verificar que el usuario existe
+    const user = await getRegisteredUser(email);
+    if (!user) {
+      throw new Error('User with this email not found');
+    }
+
     console.log('Password reset requested for:', email);
     
     const resetCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -408,7 +415,7 @@ export const authService = {
     return { success: true, method: 'email' };
   },
 
-  async sendResetEmail(email: string): Promise<{ subject: string; body: string }> {
+  async sendResetEmail(_email: string): Promise<{ subject: string; body: string }> {
     const resetCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     const subject = 'Athlead - Password Reset';
@@ -419,6 +426,34 @@ export const authService = {
 
   async updateUser(user: User): Promise<User> {
     await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+    
+    // También actualizar en la lista de usuarios registrados
+    try {
+      const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+      if (existingUsers) {
+        const users = JSON.parse(existingUsers);
+        if (users[user.email]) {
+          users[user.email].user = user;
+          await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+        }
+      }
+    } catch (error) {
+      console.log('Error updating user in registry:', error);
+    }
+    
     return user;
+  },
+
+  // Obtener todos los usuarios registrados (para búsqueda)
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+      if (!existingUsers) return [];
+      const users = JSON.parse(existingUsers);
+      return Object.values(users).map((u: any) => u.user);
+    } catch (error) {
+      console.log('Error getting all users:', error);
+      return [];
+    }
   }
 };
