@@ -869,7 +869,7 @@ export default function CreateScreen() {
                       {item.title}
                     </Text>
                     <Text style={[styles.musicItemArtist, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {item.artist} • {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+                      {[item.artist, `${Math.floor(item.duration / 60)}:${(item.duration % 60).toString().padStart(2, '0')}`].filter(Boolean).join(' • ')}
                     </Text>
                   </View>
                 </Pressable>

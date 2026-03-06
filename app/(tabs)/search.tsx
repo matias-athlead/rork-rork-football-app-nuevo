@@ -75,7 +75,7 @@ export default function SearchScreen() {
         <View style={styles.userMeta}>
           <MapPin size={14} color={theme.textSecondary} />
           <Text style={[styles.metaText, { color: theme.textSecondary }]}>
-            {item.city} • {item.federation}
+            {[item.city, item.federation].filter(Boolean).join(' • ')}
           </Text>
         </View>
         {item.role === 'player' && (
