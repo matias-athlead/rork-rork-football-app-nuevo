@@ -173,7 +173,7 @@ export default function ProfileScreen() {
           <Pressable onPress={handleOpenMaps} style={styles.locationContainer}>
             <MapPin size={14} color={COLORS.skyBlue} />
             <Text style={[styles.location, { color: COLORS.skyBlue }]}>
-              {user.city} • {user.federation}
+              {[user.city, user.federation].filter(Boolean).join(' • ')}
             </Text>
           </Pressable>
         </View>
