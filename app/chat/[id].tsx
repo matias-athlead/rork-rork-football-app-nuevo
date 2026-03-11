@@ -421,7 +421,7 @@ export default function ChatScreen() {
                 {selectedDate && (
                   <View style={styles.selectedDateTasks}>
                     <Text style={[styles.selectedDateTitle, { color: theme.text }]}>
-                      Tasks for {selectedDate}
+                      {`Tasks for ${selectedDate}`}
                     </Text>
                     {tasks.filter(t => t.date === selectedDate).map(task => (
                       <View key={task.id} style={[styles.taskCard, { backgroundColor: theme.inputBackground }]}>
@@ -492,7 +492,7 @@ export default function ChatScreen() {
                         {task.text}
                       </Text>
                       <Text style={[styles.taskDateTime, { color: theme.textSecondary }]}>
-                        {task.date} at {task.time}
+                        {`${task.date} at ${task.time}`}
                       </Text>
                     </View>
                     <Pressable onPress={() => handleDeleteTask(task.id)}>
@@ -511,7 +511,7 @@ export default function ChatScreen() {
             {messages.length === 0 ? (
               <View style={styles.emptyMessagesView}>
                 <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                  Start a conversation with {chatUser.username}
+                  {`Start a conversation with ${chatUser.username}`}
                 </Text>
               </View>
             ) : (

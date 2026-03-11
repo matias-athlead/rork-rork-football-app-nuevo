@@ -55,7 +55,7 @@ export default function AIAnalysisScreen() {
             <View style={styles.statContent}>
               <Text style={[styles.statValue, { color: theme.text }]}>{value.current}</Text>
               <Text style={[styles.statMax, { color: theme.textSecondary }]}>
-                Max: {value.max}
+                {`Max: ${value.max}`}
               </Text>
             </View>
 

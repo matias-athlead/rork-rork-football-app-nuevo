@@ -561,7 +561,7 @@ export default function MessagesScreen() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.text }]}>Select Members ({selectedUsers.length})</Text>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{`Select Members (${selectedUsers.length})`}</Text>
                 <FlatList
                   data={MOCK_USERS.slice(0, 10)}
                   style={styles.usersList}
@@ -789,7 +789,7 @@ export default function MessagesScreen() {
               style={[styles.createGroupBtn, { backgroundColor: newMembersToAdd.length > 0 ? COLORS.skyBlue : theme.border }]}
             >
               <UserPlus size={20} color={COLORS.white} />
-              <Text style={styles.createGroupText}>Add {newMembersToAdd.length} Members</Text>
+              <Text style={styles.createGroupText}>{`Add ${newMembersToAdd.length} Members`}</Text>
             </Pressable>
           </View>
         </View>
@@ -850,7 +850,7 @@ export default function MessagesScreen() {
               style={[styles.createGroupBtn, { backgroundColor: membersToRemove.length > 0 ? COLORS.error : theme.border }]}
             >
               <Trash2 size={20} color={COLORS.white} />
-              <Text style={styles.createGroupText}>Remove {membersToRemove.length} Members</Text>
+              <Text style={styles.createGroupText}>{`Remove ${membersToRemove.length} Members`}</Text>
             </Pressable>
           </View>
         </View>

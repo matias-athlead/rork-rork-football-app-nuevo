@@ -67,7 +67,8 @@ export default function NotificationsScreen() {
         </View>
         <View style={styles.notificationContent}>
           <Text style={[styles.notificationText, { color: theme.text }]}>
-            <Text style={styles.username}>{item.username}</Text> {item.content}
+            <Text style={styles.username}>{item.username}</Text>
+            {` ${item.content}`}
           </Text>
           <Text style={[styles.timeText, { color: theme.textSecondary }]}>
             {getTimeAgo(item.createdAt)}

@@ -768,21 +768,22 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.postInfo}>
-        <Text style={[styles.likesCount, { color: theme.text }]}>{item.likes} {t('home.likes')}</Text>
+        <Text style={[styles.likesCount, { color: theme.text }]}>{`${item.likes} ${t('home.likes')}`}</Text>
         <Text style={[styles.postCaption, { color: theme.text }]} numberOfLines={2}>
-          <Text style={styles.captionUsername}>{item.username}</Text> {item.caption}
+          <Text style={styles.captionUsername}>{item.username}</Text>
+          {` ${item.caption}`}
         </Text>
         {item.hashtags && Array.isArray(item.hashtags) && item.hashtags.length > 0 && (
           <Text style={styles.postHashtags}>{item.hashtags.join(' ')}</Text>
         )}
         {item.comments > 0 && (
           <Text style={[styles.viewComments, { color: theme.textSecondary }]}>
-            View all {item.comments} {t('home.comments')}
+            {`View all ${item.comments} ${t('home.comments')}`}
           </Text>
         )}
         {(item.votes || 0) > 0 && (
           <Text style={[styles.votesCount, { color: COLORS.skyBlue }]}>
-            {item.votes} {item.votes === 1 ? 'vote' : 'votes'}
+            {`${item.votes || 0} ${(item.votes || 0) === 1 ? 'vote' : 'votes'}`}
           </Text>
         )}
       </View>

@@ -75,7 +75,7 @@ export default function PremiumScreen() {
 
         <View style={[styles.pricingCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.priceAmount, { color: theme.text }]}>
-            ${price}
+            {`$${price}`}
             <Text style={[styles.pricePeriod, { color: theme.textSecondary }]}>/month</Text>
           </Text>
           <Text style={[styles.priceDescription, { color: theme.textSecondary }]}>

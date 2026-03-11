@@ -178,8 +178,7 @@ export default function RadarStatsScreen() {
             <View key={index} style={[styles.statCard, { backgroundColor: theme.card }]}>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{item.label}</Text>
               <Text style={[styles.statValue, { color: theme.text }]}>
-                {item.value}
-                {item.max === 100 && '%'}
+                {item.max === 100 ? `${item.value}%` : `${item.value}`}
               </Text>
             </View>
           ))}

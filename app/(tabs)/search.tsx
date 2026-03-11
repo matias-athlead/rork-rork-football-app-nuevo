@@ -81,13 +81,13 @@ export default function SearchScreen() {
         {item.role === 'player' && (
           <View style={styles.stats}>
             <Text style={[styles.statText, { color: theme.text }]}>
-              ⚡ {(item as PlayerProfile).stats.speed}
+              {`⚡ ${(item as PlayerProfile).stats.speed}`}
             </Text>
             <Text style={[styles.statText, { color: theme.text }]}>
-              ⚽ {(item as PlayerProfile).stats.goals}
+              {`⚽ ${(item as PlayerProfile).stats.goals}`}
             </Text>
             <Text style={[styles.statText, { color: theme.text }]}>
-              🎯 {(item as PlayerProfile).stats.passAccuracy}%
+              {`🎯 ${(item as PlayerProfile).stats.passAccuracy}%`}
             </Text>
           </View>
         )}
