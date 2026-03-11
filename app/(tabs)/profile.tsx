@@ -194,7 +194,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statEmoji}>🎯</Text>
-                <Text style={[styles.statItemValue, { color: theme.text }]}>{user.stats.passAccuracy}%</Text>
+                <Text style={[styles.statItemValue, { color: theme.text }]}>{`${user.stats.passAccuracy}%`}</Text>
                 <Text style={[styles.statItemLabel, { color: theme.textSecondary }]}>Accuracy</Text>
               </View>
             </View>
