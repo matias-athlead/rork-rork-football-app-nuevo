@@ -130,8 +130,8 @@ export default function RegisterScreen() {
         profilePhoto: profilePhoto || undefined,
       });
       router.replace('/(tabs)');
-    } catch {
-      Alert.alert(t('common.error'), 'Registration failed. Please try again.');
+    } catch (error: any) {
+      Alert.alert(t('common.error'), error?.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

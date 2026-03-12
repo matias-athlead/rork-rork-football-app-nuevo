@@ -68,14 +68,10 @@ function isTokenExpired(token: string): boolean {
 
 // Guardar usuario en el registro local
 async function saveRegisteredUser(user: User, password: string): Promise<void> {
-  try {
-    const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
-    const users = existingUsers ? JSON.parse(existingUsers) : {};
-    users[user.email] = { user, passwordHash: hashPassword(password) };
-    await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  } catch (error) {
-    // silencioso en producción
-  }
+  const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+  const users = existingUsers ? JSON.parse(existingUsers) : {};
+  users[user.email] = { user, passwordHash: hashPassword(password) };
+  await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
 // Obtener usuario registrado
