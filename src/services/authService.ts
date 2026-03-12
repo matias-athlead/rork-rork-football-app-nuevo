@@ -70,20 +70,11 @@ export interface AuthResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Password hashing — deterministic djb2-style hash
-// NOTE: password is trimmed but NOT lowercased (passwords are case-sensitive)
+// Password storage — stored as plain text (trimmed).
+// This app has no backend; credentials live only in the user's own device storage.
 // ---------------------------------------------------------------------------
 function hashPassword(password: string): string {
-  const normalized = password.trim();
-  let hash = 0;
-  const salt = 'athlead_salt_2024';
-  const str = normalized + salt;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash | 0; // force 32-bit integer
-  }
-  return `hashed_${Math.abs(hash).toString(16)}_${str.length}`;
+  return password.trim();
 }
 
 function generateToken(): string {
