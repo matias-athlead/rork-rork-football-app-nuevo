@@ -8,6 +8,7 @@ import { RoleSelector } from '@/src/components/RoleSelector';
 import { UserRole } from '@/src/types/User';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
+import { authService } from '@/src/services/authService';
 import { COLORS } from '@/src/utils/theme';
 
 export default function LoginScreen() {
@@ -172,6 +173,31 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Pressable
+            onPress={() => {
+              Alert.alert(
+                'Reset App Data',
+                'This will delete all saved accounts and sessions. Use this if you are stuck and cannot log in or register.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await authService.clearAllAuthData();
+                      Alert.alert('Done', 'App data cleared. You can now register a new account.');
+                    },
+                  },
+                ]
+              );
+            }}
+            style={styles.resetButton}
+          >
+            <Text style={[styles.resetText, { color: theme.textSecondary }]}>
+              Having trouble? Reset app data
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -288,5 +314,13 @@ const styles = StyleSheet.create({
   footerLink: {
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  resetButton: {
+    alignItems: 'center',
+    marginTop: 24,
+    paddingVertical: 8,
+  },
+  resetText: {
+    fontSize: 12,
   },
 });

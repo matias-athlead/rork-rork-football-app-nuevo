@@ -14,6 +14,7 @@ interface AuthContextValue {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: User) => Promise<void>;
+  clearAllAuthData: () => Promise<void>;
 }
 
 export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue => {
@@ -74,6 +75,12 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     setUser(updated);
   };
 
+  const clearAllAuthData = async () => {
+    await authService.clearAllAuthData();
+    setUser(null);
+    setToken(null);
+  };
+
   return {
     user,
     token,
@@ -84,6 +91,7 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     loginWithApple,
     register,
     logout,
-    updateUser
+    updateUser,
+    clearAllAuthData,
   };
 });

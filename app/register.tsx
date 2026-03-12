@@ -6,6 +6,7 @@ import { Mail, Lock, User, ArrowLeft, ChevronDown } from 'lucide-react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
+import { authService } from '@/src/services/authService';
 import { COLORS } from '@/src/utils/theme';
 import { useTranslation } from 'react-i18next';
 import { PhotoUpload } from '@/src/components/PhotoUpload';
@@ -375,6 +376,31 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Pressable
+            onPress={() => {
+              Alert.alert(
+                'Reset App Data',
+                'This will delete all saved accounts and sessions. Use this if you are stuck and cannot register.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await authService.clearAllAuthData();
+                      Alert.alert('Done', 'App data cleared. You can now register a new account.');
+                    },
+                  },
+                ]
+              );
+            }}
+            style={styles.resetButton}
+          >
+            <Text style={[styles.resetText, { color: theme.textSecondary }]}>
+              Having trouble? Reset app data
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
 
@@ -642,6 +668,14 @@ const styles = StyleSheet.create({
   footerLink: {
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  resetButton: {
+    alignItems: 'center',
+    marginTop: 24,
+    paddingVertical: 8,
+  },
+  resetText: {
+    fontSize: 12,
   },
   modalOverlay: {
     flex: 1,

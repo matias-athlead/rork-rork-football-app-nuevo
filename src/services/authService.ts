@@ -68,9 +68,18 @@ function isTokenExpired(token: string): boolean {
 
 // Guardar usuario en el registro local
 async function saveRegisteredUser(user: User, password: string): Promise<void> {
-  const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
-  const users = existingUsers ? JSON.parse(existingUsers) : {};
-  users[user.email] = { user, passwordHash: hashPassword(password) };
+  let users: Record<string, any> = {};
+  try {
+    const existingData = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+    if (existingData) {
+      users = JSON.parse(existingData);
+    }
+  } catch {
+    // Existing data is corrupt — start with a fresh store
+    users = {};
+  }
+  const key = user.email.toLowerCase().trim();
+  users[key] = { user: { ...user, email: key }, passwordHash: hashPassword(password) };
   await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
@@ -80,7 +89,8 @@ async function getRegisteredUser(email: string): Promise<{ user: User; passwordH
     const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
     if (!existingUsers) return null;
     const users = JSON.parse(existingUsers);
-    return users[email] || null;
+    const key = email.toLowerCase().trim();
+    return users[key] || null;
   } catch {
     return null;
   }
@@ -94,8 +104,10 @@ export const authService = {
       throw new Error('Email and password are required');
     }
 
+    const email = credentials.email.toLowerCase().trim();
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(credentials.email)) {
+    if (!emailRegex.test(email)) {
       throw new Error('Invalid email format');
     }
 
@@ -103,7 +115,7 @@ export const authService = {
       throw new Error('Password must be at least 4 characters');
     }
 
-    const registeredUser = await getRegisteredUser(credentials.email);
+    const registeredUser = await getRegisteredUser(email);
 
     if (!registeredUser) {
       throw new Error('User not found. Please register first.');
@@ -246,7 +258,9 @@ export const authService = {
   async register(data: RegisterData): Promise<AuthResponse> {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    const existingUser = await getRegisteredUser(data.email);
+    const email = data.email.toLowerCase().trim();
+
+    const existingUser = await getRegisteredUser(email);
     if (existingUser) {
       throw new Error('User with this email already exists');
     }
@@ -257,7 +271,7 @@ export const authService = {
 
     const baseUser = {
       id: `user_${Date.now()}`,
-      email: data.email,
+      email,
       username: data.username,
       fullName: data.fullName,
       profilePhoto: data.profilePhoto || 'https://i.pravatar.cc/300?img=50',
@@ -420,6 +434,15 @@ export const authService = {
     }
 
     return user;
+  },
+
+  async clearAllAuthData(): Promise<void> {
+    await AsyncStorage.multiRemove([
+      AUTH_TOKEN_KEY,
+      USER_DATA_KEY,
+      USERS_STORAGE_KEY,
+      RESET_CODES_KEY,
+    ]);
   },
 
   async getAllUsers(): Promise<User[]> {
