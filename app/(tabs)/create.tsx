@@ -394,11 +394,16 @@ export default function CreateScreen() {
         <Pressable onPress={() => router.back()}>
           <X size={24} color={theme.text} />
         </Pressable>
-        <Text style={[styles.title, { color: theme.text }]}>Create Post</Text>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.title, { color: theme.text }]}>New Post</Text>
+          <Text style={[styles.stepIndicator, { color: theme.textSecondary }]}>
+            {selectedMedia ? 'Step 2 of 2 — Details' : 'Step 1 of 2 — Choose Media'}
+          </Text>
+        </View>
         {selectedMedia ? (
-          <Pressable onPress={savePost} disabled={isUploading}>
-            <Text style={[styles.postButton, { color: isUploading ? theme.textSecondary : COLORS.skyBlue }]}>
-              {isUploading ? 'Posting...' : 'Post'}
+          <Pressable onPress={savePost} disabled={isUploading} style={[styles.postButtonPill, { backgroundColor: isUploading ? theme.border : COLORS.skyBlue }]}>
+            <Text style={styles.postButtonPillText}>
+              {isUploading ? '...' : 'Share'}
             </Text>
           </Pressable>
         ) : (
@@ -409,38 +414,40 @@ export default function CreateScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {!selectedMedia ? (
           <>
-            <View style={[styles.uploadArea, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <VideoIcon size={48} color={theme.textSecondary} />
-              <Text style={[styles.uploadTitle, { color: theme.text }]}>Upload Your Play</Text>
+            <View style={[styles.uploadArea, { backgroundColor: theme.card, borderColor: COLORS.primary }]}>
+              <View style={[styles.uploadIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
+                <VideoIcon size={52} color={COLORS.primary} />
+              </View>
+              <Text style={[styles.uploadTitle, { color: theme.text }]}>Choose Your Media</Text>
               <Text style={[styles.uploadSubtitle, { color: theme.textSecondary }]}>
-                Share your best football moments
+                Upload a video or photo of your best football moments
               </Text>
 
               <View style={styles.buttonContainer}>
                 <Pressable
-                  onPress={handleCamera}
+                  onPress={handlePickVideo}
                   style={[styles.uploadButton, { backgroundColor: COLORS.primary }]}
                 >
-                  <Camera size={24} color={COLORS.white} />
-                  <Text style={styles.buttonText}>Record</Text>
+                  <ImageIcon size={22} color={COLORS.white} />
+                  <Text style={styles.buttonText}>Gallery</Text>
                 </Pressable>
 
                 <Pressable
-                  onPress={handlePickVideo}
-                  style={[styles.uploadButton, { backgroundColor: COLORS.skyBlue }]}
+                  onPress={handleCamera}
+                  style={[styles.uploadButton, { backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border }]}
                 >
-                  <ImageIcon size={24} color={COLORS.white} />
-                  <Text style={styles.buttonText}>Gallery</Text>
+                  <Camera size={22} color={theme.text} />
+                  <Text style={[styles.buttonText, { color: theme.text }]}>Camera</Text>
                 </Pressable>
               </View>
             </View>
 
             <View style={[styles.tipsSection, { backgroundColor: theme.card }]}>
               <Text style={[styles.tipsTitle, { color: theme.text }]}>Tips for Great Content</Text>
-              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Film in good lighting</Text>
-              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Keep videos under 60s</Text>
-              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Add relevant hashtags</Text>
-              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Tag your club</Text>
+              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Film in good lighting for best quality</Text>
+              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Keep videos under 60 seconds</Text>
+              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Show your skills clearly — close-ups work great</Text>
+              <Text style={[styles.tip, { color: theme.textSecondary }]}>• Tag your club to get discovered</Text>
             </View>
           </>
         ) : (
@@ -524,16 +531,22 @@ export default function CreateScreen() {
             </View>
 
             <View style={[styles.captionSection, { backgroundColor: theme.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Caption</Text>
+              <View style={styles.captionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Caption</Text>
+                <Text style={[styles.charCount, { color: caption.length > 200 ? COLORS.error : theme.textSecondary }]}>
+                  {caption.length}/220
+                </Text>
+              </View>
               <TextInput
                 ref={captionInputRef}
                 style={[styles.captionInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
-                placeholder="Write a caption... Use @ to mention users"
+                placeholder="Describe your play... Use @ to mention teammates"
                 placeholderTextColor={theme.textSecondary}
                 value={caption}
                 onChangeText={handleCaptionChange}
                 multiline
                 numberOfLines={4}
+                maxLength={220}
               />
               {mentionedUsers.length > 0 && (
                 <View style={styles.mentionedUsersContainer}>
@@ -900,13 +913,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
+  headerCenter: {
+    alignItems: 'center',
+  },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
+  },
+  stepIndicator: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
   },
   postButton: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  postButtonPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  postButtonPillText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  uploadIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  captionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  charCount: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   content: {
     flex: 1,

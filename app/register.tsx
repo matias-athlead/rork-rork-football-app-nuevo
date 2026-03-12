@@ -130,7 +130,7 @@ export default function RegisterScreen() {
         city,
         profilePhoto: profilePhoto || undefined,
       });
-      router.replace('/(tabs)');
+      router.replace('/complete-profile');
     } catch (error: any) {
       Alert.alert(t('common.error'), error?.message || 'Registration failed. Please try again.');
     } finally {

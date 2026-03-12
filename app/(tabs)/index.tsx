@@ -917,28 +917,79 @@ export default function HomeScreen() {
           scrollEnabled={true}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
-          ListEmptyComponent={() => (
-            <View style={styles.emptyStateContainer}>
-              <View style={[styles.emptyStateIconContainer, { backgroundColor: `${COLORS.skyBlue}20` }]}>
-                <Video size={48} color={COLORS.skyBlue} />
+          ListEmptyComponent={() => {
+            if (activeTab === 'following') {
+              return (
+                <View style={styles.emptyStateContainer}>
+                  <View style={[styles.emptyStateIconContainer, { backgroundColor: `${COLORS.skyBlue}20` }]}>
+                    <Users size={48} color={COLORS.skyBlue} />
+                  </View>
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No posts yet</Text>
+                  <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary }]}>
+                    Follow players and clubs to see their content here
+                  </Text>
+                  <Pressable
+                    onPress={() => router.push('/(tabs)/search' as any)}
+                    style={[styles.createPostButton, { backgroundColor: COLORS.skyBlue }]}
+                  >
+                    <Search size={20} color={COLORS.white} />
+                    <Text style={styles.createPostButtonText}>Discover Players</Text>
+                  </Pressable>
+                </View>
+              );
+            }
+            return (
+              <View style={styles.emptyStateContainer}>
+                {user && (
+                  <Text style={[styles.emptyWelcome, { color: theme.text }]}>
+                    Welcome, {user.fullName.split(' ')[0]}!
+                  </Text>
+                )}
+                <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary, marginBottom: 24 }]}>
+                  Your feed is empty. Here's how to get started:
+                </Text>
+
+                <Pressable
+                  onPress={() => router.push('/(tabs)/search' as any)}
+                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
+                >
+                  <View style={[styles.emptyActionIcon, { backgroundColor: `${COLORS.skyBlue}18` }]}>
+                    <Users size={22} color={COLORS.skyBlue} />
+                  </View>
+                  <View style={styles.emptyActionText}>
+                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Find Players & Clubs</Text>
+                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Follow people to fill your feed</Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push('/(tabs)/create' as any)}
+                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
+                >
+                  <View style={[styles.emptyActionIcon, { backgroundColor: `${COLORS.primary}18` }]}>
+                    <Video size={22} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.emptyActionText}>
+                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Share Your First Play</Text>
+                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Upload a highlight or photo</Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push('/edit-profile' as any)}
+                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
+                >
+                  <View style={[styles.emptyActionIcon, { backgroundColor: '#f59e0b18' }]}>
+                    <UserPlus size={22} color="#f59e0b" />
+                  </View>
+                  <View style={styles.emptyActionText}>
+                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Complete Your Profile</Text>
+                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Add bio, stats, and a cover photo</Text>
+                  </View>
+                </Pressable>
               </View>
-              <Text style={[styles.emptyStateTitle, { color: theme.text }]}>
-                {activeTab === 'following' ? 'No posts from followed users' : 'No videos yet'}
-              </Text>
-              <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary }]}>
-                {activeTab === 'following' 
-                  ? 'Follow users to see their content here' 
-                  : 'Be the first to share your football moments!'}
-              </Text>
-              <Pressable 
-                onPress={() => router.push('/create' as any)}
-                style={[styles.createPostButton, { backgroundColor: COLORS.skyBlue }]}
-              >
-                <Plus size={20} color={COLORS.white} />
-                <Text style={styles.createPostButtonText}>Create Your First Post</Text>
-              </Pressable>
-            </View>
-          )}
+            );
+          }}
           />
         </Animated.View>
       </View>
@@ -1568,4 +1619,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  emptyWelcome: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    width: '100%',
+    gap: 14,
+  },
+  emptyActionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyActionText: { flex: 1 },
+  emptyActionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  emptyActionDesc: { fontSize: 13 },
 });
