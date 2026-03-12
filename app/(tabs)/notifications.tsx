@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView } from 'react-native';
-import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, UserPlus, Trophy } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -63,11 +63,7 @@ export default function NotificationsScreen() {
     >
       <View style={styles.notificationLeft}>
         <View style={styles.avatarContainer}>
-          {item.userPhoto ? (
-            <Image source={{ uri: item.userPhoto }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.card }]} />
-          )}
+          <Avatar uri={item.userPhoto} username={item.username} size={48} />
           <View style={styles.iconBadge}>
             {getNotificationIcon(item.type)}
           </View>

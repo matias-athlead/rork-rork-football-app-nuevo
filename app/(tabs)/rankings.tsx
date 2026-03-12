@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
-import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { Trophy, Medal, Award, Users, Target, Shield, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -92,7 +92,7 @@ export default function RankingsScreen() {
                       {item.rank}
                     </Text>
                   </View>
-                  <Image source={{ uri: item.user.profilePhoto }} style={styles.avatar} />
+                  <Avatar uri={item.user.profilePhoto} username={item.user.username} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.username, { color: theme.text }]} numberOfLines={1}>
                       {item.user.username}
@@ -136,7 +136,7 @@ export default function RankingsScreen() {
                       {item.rank}
                     </Text>
                   </View>
-                  <Image source={{ uri: item.user.profilePhoto }} style={styles.avatar} />
+                  <Avatar uri={item.user.profilePhoto} username={item.user.username} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.username, { color: theme.text }]} numberOfLines={1}>
                       {item.user.username}
@@ -224,7 +224,7 @@ export default function RankingsScreen() {
                       {item.rank}
                     </Text>
                   </View>
-                  <Image source={{ uri: item.club.profilePhoto }} style={styles.avatar} />
+                  <Avatar uri={item.club.profilePhoto} username={item.club.username} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.username, { color: theme.text }]} numberOfLines={1}>
                       {item.club.username}
@@ -269,7 +269,7 @@ export default function RankingsScreen() {
                       {item.rank}
                     </Text>
                   </View>
-                  <Image source={{ uri: item.coach.profilePhoto }} style={styles.avatar} />
+                  <Avatar uri={item.coach.profilePhoto} username={item.coach.username} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.username, { color: theme.text }]} numberOfLines={1}>
                       {item.coach.username}

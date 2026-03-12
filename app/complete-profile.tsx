@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, ScrollView, SafeAreaView } from 'rea
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { User, Users, Video, ChevronRight, Trophy } from 'lucide-react-native';
-import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useTheme } from '@/src/hooks/useTheme';
 import { COLORS } from '@/src/utils/theme';
@@ -72,7 +72,7 @@ export default function CompleteProfileScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.hero}>
-          <Image source={{ uri: user.profilePhoto }} style={styles.avatar} contentFit="cover" />
+          <Avatar uri={user.profilePhoto} username={user.username} size={88} style={{ borderWidth: 3, borderColor: 'rgba(255,255,255,0.6)' }} />
           <Text style={styles.heroTitle}>Welcome, {user.fullName.split(' ')[0]}!</Text>
           <Text style={styles.heroSub}>Your account is ready. Here's what to do next.</Text>
 

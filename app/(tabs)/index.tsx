@@ -14,6 +14,7 @@ import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import VideoPlayer from '@/src/components/VideoPlayer';
+import Avatar from '@/src/components/Avatar';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
 import { notificationService } from '@/src/services/notificationService';
@@ -698,7 +699,7 @@ export default function HomeScreen() {
       )}
       <View style={styles.postHeader}>
         <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeaderUser}>
-          <Image source={{ uri: item.userPhoto }} style={styles.postAvatar} />
+          <Avatar uri={item.userPhoto} username={item.username} size={40} />
           <View style={styles.postHeaderInfo}>
             <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
             <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole ? item.userRole.toUpperCase() : 'USER'}</Text>
@@ -722,7 +723,7 @@ export default function HomeScreen() {
         <View style={styles.videoTouchOverlay}>
           {isReposted && item.repostedByPhoto && (
             <View style={styles.repostBadge}>
-              <Image source={{ uri: item.repostedByPhoto }} style={styles.repostAvatar} />
+              <Avatar uri={item.repostedByPhoto} username={item.repostedByUsername} size={40} style={{ borderWidth: 2, borderColor: COLORS.white }} />
               <View style={styles.repostIconContainer}>
                 <Repeat2 size={12} color={COLORS.white} />
               </View>
@@ -1091,7 +1092,7 @@ export default function HomeScreen() {
                     onPress={() => handleQuickSend(user.id, user.username)}
                     style={styles.frequentContactItem}
                   >
-                    <Image source={{ uri: user.profilePhoto }} style={styles.frequentContactAvatar} />
+                    <Avatar uri={user.profilePhoto} username={user.username} size={56} style={{ marginBottom: 6 }} />
                     <Text style={[styles.frequentContactName, { color: theme.text }]} numberOfLines={1}>
                       {user.username}
                     </Text>
@@ -1123,7 +1124,7 @@ export default function HomeScreen() {
                     onPress={() => handleToggleUserSelection(mockUser.id)}
                     style={[styles.sendModalUserItem, { backgroundColor: isSelected ? `${COLORS.skyBlue}20` : 'transparent' }]}
                   >
-                    <Image source={{ uri: mockUser.profilePhoto }} style={styles.sendModalAvatar} />
+                    <Avatar uri={mockUser.profilePhoto} username={mockUser.username} size={48} />
                     <View style={styles.sendModalUserInfo}>
                       <Text style={[styles.sendModalUsername, { color: theme.text }]}>{mockUser.username}</Text>
                       <Text style={[styles.sendModalFullName, { color: theme.textSecondary }]}>{mockUser.fullName}</Text>

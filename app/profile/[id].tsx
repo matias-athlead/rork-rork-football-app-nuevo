@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, FlatList, 
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, MapPin, Heart, MessageCircle } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -135,7 +136,7 @@ export default function ProfileDetailScreen() {
         
         <View style={styles.content}>
           <View style={styles.avatarContainer}>
-            <Image source={{ uri: user.profilePhoto }} style={styles.avatar} />
+            <Avatar uri={user.profilePhoto} username={user.username} size={120} style={{ borderWidth: 4, borderColor: COLORS.white }} />
           </View>
 
           <Text style={[styles.username, { color: theme.text }]}>{user.fullName}</Text>

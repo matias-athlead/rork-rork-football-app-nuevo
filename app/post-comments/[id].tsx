@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, Pressable, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
-import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { X, Send, Heart } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -84,7 +84,7 @@ export default function PostCommentsScreen() {
 
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentItem}>
-      <Image source={{ uri: item.userPhoto }} style={styles.commentAvatar} />
+      <Avatar uri={item.userPhoto} username={item.username} size={36} />
       <View style={styles.commentContent}>
         <View style={styles.commentHeader}>
           <Text style={[styles.commentUsername, { color: theme.text }]}>{item.username}</Text>
@@ -141,7 +141,7 @@ export default function PostCommentsScreen() {
 
         <View style={[styles.inputContainer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
           {user && (
-            <Image source={{ uri: user.profilePhoto }} style={styles.inputAvatar} />
+            <Avatar uri={user.profilePhoto} username={user.username} size={32} />
           )}
           <TextInput
             style={[styles.input, { color: theme.text, backgroundColor: theme.inputBackground }]}

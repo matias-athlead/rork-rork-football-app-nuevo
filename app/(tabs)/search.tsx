@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
-import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { Search as SearchIcon, Filter, MapPin, MessageCircle } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -89,7 +89,7 @@ export default function SearchScreen() {
       onPress={() => router.push(`/profile/${item.id}` as any)}
       style={[styles.userCard, { backgroundColor: theme.card, borderColor: theme.border }]}
     >
-      <Image source={{ uri: item.profilePhoto }} style={styles.userAvatar} />
+      <Avatar uri={item.profilePhoto} username={item.username} size={64} />
       <View style={styles.userInfo}>
         <View style={styles.userHeader}>
           <Text style={[styles.username, { color: theme.text }]}>{item.username}</Text>

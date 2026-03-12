@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert, FlatList as RNFlatList } from 'react-native';
 import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as ImageIcon, Clock, Infinity, Calendar, ChevronRight, Play } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -319,7 +320,7 @@ export default function ChatScreen() {
         }} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
-        <Image source={{ uri: chatUser.profilePhoto }} style={styles.avatar} />
+        <Avatar uri={chatUser.profilePhoto} username={chatUser.username} size={40} />
         <Text style={[styles.username, { color: theme.text }]}>{chatUser.username}</Text>
         <View style={styles.headerActions}>
           <Pressable onPress={() => router.push(`/audio-call/${id}` as any)} style={styles.headerAction}>
@@ -532,7 +533,7 @@ export default function ChatScreen() {
                         </View>
                         <View style={styles.postMessageInfo}>
                           <View style={styles.postMessageHeader}>
-                            <Image source={{ uri: item.postData.userPhoto }} style={styles.postMessageAvatar} />
+                            <Avatar uri={item.postData.userPhoto} username={item.postData.username} size={24} />
                             <Text style={[styles.postMessageUsername, { color: item.isSent ? COLORS.white : theme.text }]} numberOfLines={1}>
                               {item.postData.username}
                             </Text>

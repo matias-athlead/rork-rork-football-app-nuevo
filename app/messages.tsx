@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, TextInput, Modal, Alert, Platform, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Search, Plus, X, Users, Camera, Play, UserMinus, UserPlus, LogOut, BellOff, Bell, FileText, Flag, Ban, ChevronRight, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
@@ -423,7 +424,7 @@ export default function MessagesScreen() {
       ]}
     >
       <View style={styles.avatarContainer}>
-        <Image source={{ uri: item.photo }} style={styles.avatar} />
+        <Avatar uri={item.photo} username={item.name} size={56} />
         {item.type === 'group' && (
           <View style={styles.groupBadge}>
             <Users size={10} color={COLORS.white} />
@@ -573,7 +574,7 @@ export default function MessagesScreen() {
                         onPress={() => handleToggleUser(item.id)}
                         style={[styles.userItem, { backgroundColor: isSelected ? `${COLORS.skyBlue}20` : theme.card }]}
                       >
-                        <Image source={{ uri: item.profilePhoto }} style={styles.userAvatar} />
+                        <Avatar uri={item.profilePhoto} username={item.username} size={40} />
                         <Text style={[styles.userName, { color: theme.text }]}>{item.username}</Text>
                         <View style={[styles.userCheckbox, { borderColor: theme.border, backgroundColor: isSelected ? COLORS.skyBlue : 'transparent' }]}>
                           {isSelected && <Text style={styles.checkmark}>✓</Text>}

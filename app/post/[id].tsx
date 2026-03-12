@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Mod
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share, Download } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import Avatar from '@/src/components/Avatar';
 import { useTheme } from '@/src/hooks/useTheme';
 import { MOCK_POSTS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
@@ -549,7 +550,7 @@ export default function PostDetailScreen() {
         
         <View style={styles.content}>
           <View style={styles.userInfo}>
-            <Image source={{ uri: post.userPhoto }} style={styles.avatar} />
+            <Avatar uri={post.userPhoto} username={post.username} size={48} />
             <View style={styles.userInfoText}>
               <Text style={[styles.username, { color: theme.text }]}>{post.username}</Text>
               <Text style={[styles.role, { color: theme.textSecondary }]}>
