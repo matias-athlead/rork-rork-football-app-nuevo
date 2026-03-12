@@ -1,8 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Notification } from '@/src/types/Notification';
 
 const BIRTHDAY_NOTIFICATION_KEY = '@athlead_birthday_notifications_sent';
+const IN_APP_NOTIFICATIONS_KEY = '@athlead_in_app_notifications';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -164,6 +166,49 @@ export const notificationService = {
       });
     } catch (error) {
       console.error('[Notifications] Error sending local notification:', error);
+    }
+  },
+
+  async addNotification(
+    recipientId: string,
+    notification: Omit<Notification, 'id' | 'createdAt'>
+  ): Promise<void> {
+    try {
+      const key = `${IN_APP_NOTIFICATIONS_KEY}_${recipientId}`;
+      const existing = await AsyncStorage.getItem(key);
+      const notifications: Notification[] = existing ? JSON.parse(existing) : [];
+      const newNotification: Notification = {
+        ...notification,
+        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        createdAt: new Date().toISOString(),
+      };
+      notifications.unshift(newNotification);
+      await AsyncStorage.setItem(key, JSON.stringify(notifications.slice(0, 100)));
+    } catch (error) {
+      console.error('[Notifications] Error adding notification:', error);
+    }
+  },
+
+  async getNotifications(recipientId: string): Promise<Notification[]> {
+    try {
+      const key = `${IN_APP_NOTIFICATIONS_KEY}_${recipientId}`;
+      const existing = await AsyncStorage.getItem(key);
+      return existing ? JSON.parse(existing) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async markAllAsRead(recipientId: string): Promise<void> {
+    try {
+      const key = `${IN_APP_NOTIFICATIONS_KEY}_${recipientId}`;
+      const existing = await AsyncStorage.getItem(key);
+      if (!existing) return;
+      const notifications: Notification[] = JSON.parse(existing);
+      const updated = notifications.map(n => ({ ...n, isRead: true }));
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+    } catch (error) {
+      console.error('[Notifications] Error marking as read:', error);
     }
   },
 

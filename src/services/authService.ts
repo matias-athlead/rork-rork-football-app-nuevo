@@ -117,11 +117,6 @@ export const authService = {
       throw new Error('Invalid password');
     }
 
-    // Verificar que el rol coincide si se proporcionó
-    if (credentials.role && registeredUser.user.role !== credentials.role) {
-      throw new Error(`This account is registered as "${registeredUser.user.role}", not "${credentials.role}"`);
-    }
-
     const token = generateToken();
 
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);

@@ -1,36 +1,56 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, Pressable, SafeAreaView, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Search as SearchIcon, Filter, MapPin, MessageCircle } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { useAuth } from '@/src/hooks/useAuth';
+import { authService } from '@/src/services/authService';
+import { notificationService } from '@/src/services/notificationService';
 import { User, PlayerProfile } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 
+type FilterType = 'all' | 'player' | 'coach' | 'club' | 'premium';
+
 export default function SearchScreen() {
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [filteredUsers, setFilteredUsers] = useState(MOCK_USERS);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredUsers(MOCK_USERS);
-    } else {
-      const filtered = MOCK_USERS.filter(user =>
-        user.username.toLowerCase().includes(query.toLowerCase()) ||
-        user.bio.toLowerCase().includes(query.toLowerCase())
-      );
-      setFilteredUsers(filtered);
-    }
-  };
+  useEffect(() => {
+    authService.getAllUsers().then(users => {
+      setAllUsers(users.filter(u => u.id !== currentUser?.id));
+    });
+  }, [currentUser]);
 
-  const handleFollow = useCallback((userId: string, event: any) => {
+  const filteredUsers = useMemo(() => {
+    let result = allUsers;
+
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(user =>
+        user.username.toLowerCase().includes(q) ||
+        user.fullName.toLowerCase().includes(q) ||
+        user.bio.toLowerCase().includes(q)
+      );
+    }
+
+    if (activeFilter === 'premium') {
+      result = result.filter(u => u.isPremium);
+    } else if (activeFilter !== 'all') {
+      result = result.filter(u => u.role === activeFilter);
+    }
+
+    return result;
+  }, [allUsers, searchQuery, activeFilter]);
+
+  const handleFollow = useCallback((userId: string, username: string, userPhoto: string, event: any) => {
     event.stopPropagation();
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -41,10 +61,20 @@ export default function SearchScreen() {
         newSet.delete(userId);
       } else {
         newSet.add(userId);
+        if (currentUser && userId !== currentUser.id) {
+          void notificationService.addNotification(userId, {
+            type: 'follow',
+            userId: currentUser.id,
+            username: currentUser.username,
+            userPhoto: currentUser.profilePhoto,
+            content: 'started following you',
+            isRead: false,
+          });
+        }
       }
       return newSet;
     });
-  }, []);
+  }, [currentUser]);
 
   const handleMessage = useCallback((userId: string, event: any) => {
     event.stopPropagation();
@@ -93,15 +123,19 @@ export default function SearchScreen() {
         )}
       </View>
       <View style={styles.actionButtons}>
-        <Pressable 
-          onPress={(e) => handleMessage(item.id, e)} 
+        <Pressable
+          onPress={(e) => handleMessage(item.id, e)}
           style={[styles.messageButton, { backgroundColor: theme.inputBackground }]}
         >
           <MessageCircle size={18} color={theme.text} />
         </Pressable>
-        <Pressable 
-          onPress={(e) => handleFollow(item.id, e)} 
-          style={[styles.followButton, { backgroundColor: followingUsers.has(item.id) ? theme.card : COLORS.primary, borderWidth: followingUsers.has(item.id) ? 1 : 0, borderColor: theme.border }]}
+        <Pressable
+          onPress={(e) => handleFollow(item.id, item.username, item.profilePhoto, e)}
+          style={[styles.followButton, {
+            backgroundColor: followingUsers.has(item.id) ? theme.card : COLORS.primary,
+            borderWidth: followingUsers.has(item.id) ? 1 : 0,
+            borderColor: theme.border,
+          }]}
         >
           <Text style={[styles.followButtonText, { color: followingUsers.has(item.id) ? theme.text : COLORS.white }]}>
             {followingUsers.has(item.id) ? 'Following' : 'Follow'}
@@ -110,6 +144,14 @@ export default function SearchScreen() {
       </View>
     </Pressable>
   );
+
+  const filterButtons: { key: FilterType; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'player', label: 'Players' },
+    { key: 'coach', label: 'Coaches' },
+    { key: 'club', label: 'Clubs' },
+    { key: 'premium', label: 'Premium' },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -125,14 +167,14 @@ export default function SearchScreen() {
             placeholder="Search players, coaches, clubs..."
             placeholderTextColor={theme.textSecondary}
             value={searchQuery}
-            onChangeText={handleSearch}
+            onChangeText={setSearchQuery}
           />
         </View>
         <Pressable
           onPress={() => setShowFilters(!showFilters)}
           style={[styles.filterButton, { backgroundColor: theme.card }]}
         >
-          <Filter size={20} color={theme.text} />
+          <Filter size={20} color={showFilters ? COLORS.primary : theme.text} />
         </Pressable>
       </View>
 
@@ -140,18 +182,20 @@ export default function SearchScreen() {
         <View style={[styles.filters, { backgroundColor: theme.card }]}>
           <Text style={[styles.filterTitle, { color: theme.text }]}>Quick Filters</Text>
           <View style={styles.filterChips}>
-            <Pressable style={[styles.chip, { backgroundColor: COLORS.primary }]}>
-              <Text style={styles.chipText}>Players</Text>
-            </Pressable>
-            <Pressable style={[styles.chip, { backgroundColor: theme.border }]}>
-              <Text style={[styles.chipText, { color: theme.text }]}>Coaches</Text>
-            </Pressable>
-            <Pressable style={[styles.chip, { backgroundColor: theme.border }]}>
-              <Text style={[styles.chipText, { color: theme.text }]}>Clubs</Text>
-            </Pressable>
-            <Pressable style={[styles.chip, { backgroundColor: theme.border }]}>
-              <Text style={[styles.chipText, { color: theme.text }]}>Premium</Text>
-            </Pressable>
+            {filterButtons.map(({ key, label }) => {
+              const isActive = activeFilter === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => setActiveFilter(key)}
+                  style={[styles.chip, { backgroundColor: isActive ? COLORS.primary : theme.border }]}
+                >
+                  <Text style={[styles.chipText, { color: isActive ? COLORS.white : theme.text }]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       )}
@@ -162,6 +206,15 @@ export default function SearchScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+              {allUsers.length === 0
+                ? 'No other users registered yet'
+                : 'No users match your search'}
+            </Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -230,11 +283,19 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.white,
   },
   listContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+    flexGrow: 1,
+  },
+  emptyState: {
+    flex: 1,
+    paddingTop: 60,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
   },
   userCard: {
     flexDirection: 'row',

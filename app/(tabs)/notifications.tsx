@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, UserPlus, Trophy } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_NOTIFICATIONS } from '@/src/services/mockData';
+import { useAuth } from '@/src/hooks/useAuth';
+import { notificationService } from '@/src/services/notificationService';
 import { Notification } from '@/src/types/Notification';
 import { COLORS } from '@/src/utils/theme';
 
 export default function NotificationsScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    notificationService.getNotifications(user.id).then(setNotifications);
+  }, [user]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -81,8 +88,11 @@ export default function NotificationsScreen() {
     </Pressable>
   );
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+  const markAllAsRead = async () => {
+    if (!user) return;
+    const updated = notifications.map(n => ({ ...n, isRead: true }));
+    setNotifications(updated);
+    await notificationService.markAllAsRead(user.id);
   };
 
   return (

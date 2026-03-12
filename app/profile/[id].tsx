@@ -1,15 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, FlatList, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, MapPin, Heart, MessageCircle } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
-import { MOCK_USERS, MOCK_POSTS } from '@/src/services/mockData';
+import { authService } from '@/src/services/authService';
+import { notificationService } from '@/src/services/notificationService';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { Post } from '@/src/types/Post';
+import { User } from '@/src/types/User';
 import * as Linking from 'expo-linking';
+
+const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
 export default function ProfileDetailScreen() {
   const { theme } = useTheme();
@@ -18,19 +23,49 @@ export default function ProfileDetailScreen() {
   const { id } = useLocalSearchParams();
   const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<'posts' | 'stats'>('posts');
+  const [user, setUser] = useState<User | null>(null);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
 
-  const user = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
-  const userPosts = useMemo(() => MOCK_POSTS.filter(p => p.userId === user.id), [user.id]);
-  const isOwnProfile = currentUser?.id === user.id;
+  useEffect(() => {
+    const loadProfile = async () => {
+      const userId = Array.isArray(id) ? id[0] : id;
+      const users = await authService.getAllUsers();
+      const found = users.find(u => u.id === userId) ?? null;
+      setUser(found);
+      if (found) {
+        const postsData = await AsyncStorage.getItem(POSTS_STORAGE_KEY);
+        if (postsData) {
+          const allPosts = JSON.parse(postsData);
+          setUserPosts(allPosts[found.id] || []);
+        }
+      }
+    };
+    loadProfile();
+  }, [id]);
 
-  const handleFollow = () => {
+  const isOwnProfile = currentUser?.id === user?.id;
+
+  const handleFollow = async () => {
+    if (!user || !currentUser) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    setIsFollowing(!isFollowing);
+    const nowFollowing = !isFollowing;
+    setIsFollowing(nowFollowing);
+    if (nowFollowing) {
+      void notificationService.addNotification(user.id, {
+        type: 'follow',
+        userId: currentUser.id,
+        username: currentUser.username,
+        userPhoto: currentUser.profilePhoto,
+        content: 'started following you',
+        isRead: false,
+      });
+    }
   };
 
   const handleMessage = () => {
+    if (!user) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -38,7 +73,7 @@ export default function ProfileDetailScreen() {
   };
 
   const handleLocationPress = () => {
-    if (user.city) {
+    if (user?.city) {
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(user.city)}`;
       Linking.openURL(url);
     }
@@ -67,6 +102,23 @@ export default function ProfileDetailScreen() {
       </Pressable>
     );
   };
+
+  if (!user) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color={theme.text} />
+          </Pressable>
+          <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.emptyState}>
+          <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>User not found</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>

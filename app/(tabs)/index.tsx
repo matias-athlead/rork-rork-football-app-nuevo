@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import VideoPlayer from '@/src/components/VideoPlayer';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
+import { notificationService } from '@/src/services/notificationService';
 
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 const FOLLOWED_USERS_KEY = '@athlead_followed_users';
@@ -231,9 +232,22 @@ export default function HomeScreen() {
     if (Platform.OS !== 'web') {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    setPosts(posts.map(p => 
+    const post = posts.find(p => p.id === postId);
+    setPosts(posts.map(p =>
       p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p
     ));
+    if (post && !post.isLiked && user && post.userId !== user.id) {
+      void notificationService.addNotification(post.userId, {
+        type: 'like',
+        userId: user.id,
+        username: user.username,
+        userPhoto: user.profilePhoto,
+        content: 'liked your post',
+        postId: post.id,
+        postThumbnail: post.thumbnailUrl,
+        isRead: false,
+      });
+    }
   };
 
   const handleComment = (postId: string) => {
@@ -612,24 +626,34 @@ export default function HomeScreen() {
     }
   };
 
-  const handleFollowToggle = async (userId: string) => {
+  const handleFollowToggle = async (userId: string, username?: string, userPhoto?: string) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    
+
     try {
       const isFollowing = followedUsers.includes(userId);
       let updatedFollowedUsers: string[];
-      
+
       if (isFollowing) {
         updatedFollowedUsers = followedUsers.filter(id => id !== userId);
       } else {
         updatedFollowedUsers = [...followedUsers, userId];
+        if (user && userId !== user.id) {
+          void notificationService.addNotification(userId, {
+            type: 'follow',
+            userId: user.id,
+            username: user.username,
+            userPhoto: user.profilePhoto,
+            content: 'started following you',
+            isRead: false,
+          });
+        }
       }
-      
+
       setFollowedUsers(updatedFollowedUsers);
       await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(updatedFollowedUsers));
-      
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -681,7 +705,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
         <Pressable 
-          onPress={() => handleFollowToggle(item.userId)}
+          onPress={() => handleFollowToggle(item.userId, item.username, item.userPhoto)}
           style={[styles.followButton, { 
             backgroundColor: followedUsers.includes(item.userId) ? theme.border : COLORS.skyBlue 
           }]}
