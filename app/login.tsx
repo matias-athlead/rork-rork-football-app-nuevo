@@ -37,11 +37,16 @@ export default function LoginScreen() {
       return;
     }
 
+    // Dump the full auth storage state before every login attempt
+    await authService.debugReadAuthStorage();
+    console.log('[AUTH] login attempt — raw email input:', JSON.stringify(email), '| normalized:', JSON.stringify(email.toLowerCase().trim()));
+
     setIsLoading(true);
     try {
       await login({ email, password, role });
       router.replace('/(tabs)');
     } catch (error: any) {
+      console.error('[AUTH] login error:', error?.message);
       Alert.alert('Error', error?.message || 'Invalid credentials. Please check your email and password.');
     } finally {
       setIsLoading(false);

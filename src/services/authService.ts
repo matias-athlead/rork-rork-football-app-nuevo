@@ -71,15 +71,22 @@ async function saveRegisteredUser(user: User, password: string): Promise<void> {
   let users: Record<string, any> = {};
   try {
     const existingData = await AsyncStorage.getItem(USERS_STORAGE_KEY);
+    console.log('[AUTH] saveRegisteredUser — raw existingData:', existingData);
     if (existingData) {
-      users = JSON.parse(existingData);
+      const parsed = JSON.parse(existingData);
+      // Migrate any old non-normalised keys to lowercase while reading
+      for (const [k, v] of Object.entries(parsed)) {
+        users[k.toLowerCase().trim()] = v;
+      }
     }
-  } catch {
-    // Existing data is corrupt — start with a fresh store
+  } catch (e) {
+    console.warn('[AUTH] saveRegisteredUser — corrupt existing data, starting fresh:', e);
     users = {};
   }
   const key = user.email.toLowerCase().trim();
-  users[key] = { user: { ...user, email: key }, passwordHash: hashPassword(password) };
+  const entry = { user: { ...user, email: key }, passwordHash: hashPassword(password) };
+  users[key] = entry;
+  console.log('[AUTH] saveRegisteredUser — writing key:', key, '| passwordHash:', entry.passwordHash, '| all keys:', Object.keys(users));
   await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
@@ -87,11 +94,33 @@ async function saveRegisteredUser(user: User, password: string): Promise<void> {
 async function getRegisteredUser(email: string): Promise<{ user: User; passwordHash: string } | null> {
   try {
     const existingUsers = await AsyncStorage.getItem(USERS_STORAGE_KEY);
-    if (!existingUsers) return null;
+    console.log('[AUTH] getRegisteredUser — raw store:', existingUsers);
+    if (!existingUsers) {
+      console.log('[AUTH] getRegisteredUser — store is empty, returning null');
+      return null;
+    }
     const users = JSON.parse(existingUsers);
     const key = email.toLowerCase().trim();
-    return users[key] || null;
-  } catch {
+    console.log('[AUTH] getRegisteredUser — looking up key:', JSON.stringify(key), '| stored keys:', Object.keys(users));
+
+    // Direct lookup
+    if (users[key]) {
+      console.log('[AUTH] getRegisteredUser — FOUND via direct key');
+      return users[key];
+    }
+
+    // Fallback: case-insensitive scan for data saved by older code versions
+    const allKeys = Object.keys(users);
+    const match = allKeys.find(k => k.toLowerCase().trim() === key);
+    if (match) {
+      console.log('[AUTH] getRegisteredUser — FOUND via fallback scan, matched key:', match);
+      return users[match];
+    }
+
+    console.log('[AUTH] getRegisteredUser — NOT FOUND');
+    return null;
+  } catch (e) {
+    console.error('[AUTH] getRegisteredUser — parse error:', e);
     return null;
   }
 }
@@ -116,12 +145,16 @@ export const authService = {
     }
 
     const registeredUser = await getRegisteredUser(email);
+    console.log('[AUTH] login — email:', email, '| found user:', !!registeredUser);
 
     if (!registeredUser) {
       throw new Error('User not found. Please register first.');
     }
 
-    if (registeredUser.passwordHash !== hashPassword(credentials.password)) {
+    const computedHash = hashPassword(credentials.password);
+    console.log('[AUTH] login — storedHash:', registeredUser.passwordHash, '| computedHash:', computedHash, '| match:', registeredUser.passwordHash === computedHash);
+
+    if (registeredUser.passwordHash !== computedHash) {
       throw new Error('Invalid password');
     }
 
@@ -259,8 +292,10 @@ export const authService = {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const email = data.email.toLowerCase().trim();
+    console.log('[AUTH] register — checking email:', email);
 
     const existingUser = await getRegisteredUser(email);
+    console.log('[AUTH] register — existingUser found:', !!existingUser);
     if (existingUser) {
       throw new Error('User with this email already exists');
     }
@@ -434,6 +469,33 @@ export const authService = {
     }
 
     return user;
+  },
+
+  async debugReadAuthStorage(): Promise<void> {
+    try {
+      const [token, userData, usersRaw] = await Promise.all([
+        AsyncStorage.getItem(AUTH_TOKEN_KEY),
+        AsyncStorage.getItem(USER_DATA_KEY),
+        AsyncStorage.getItem(USERS_STORAGE_KEY),
+      ]);
+      console.log('[AUTH DEBUG] ==============================');
+      console.log('[AUTH DEBUG] AUTH_TOKEN_KEY:', token ? token.substring(0, 40) + '...' : null);
+      console.log('[AUTH DEBUG] USER_DATA_KEY email:', userData ? JSON.parse(userData).email : null);
+      if (usersRaw) {
+        const users = JSON.parse(usersRaw);
+        const keys = Object.keys(users);
+        console.log('[AUTH DEBUG] USERS_STORAGE_KEY — count:', keys.length, '| keys:', keys);
+        keys.forEach(k => {
+          const entry = users[k];
+          console.log(`[AUTH DEBUG]   key="${k}" | has passwordHash:`, !!entry?.passwordHash, '| hash:', entry?.passwordHash);
+        });
+      } else {
+        console.log('[AUTH DEBUG] USERS_STORAGE_KEY: empty / null');
+      }
+      console.log('[AUTH DEBUG] ==============================');
+    } catch (e) {
+      console.error('[AUTH DEBUG] Error reading storage:', e);
+    }
   },
 
   async clearAllAuthData(): Promise<void> {
