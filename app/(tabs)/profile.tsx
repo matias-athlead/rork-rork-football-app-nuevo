@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Linking, Platform, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import Avatar from '@/src/components/Avatar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Settings, Crown, Grid3x3, BarChart3, MapPin, Repeat2, Trash2 } from 'lucide-react-native';

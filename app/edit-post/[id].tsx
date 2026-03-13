@@ -11,7 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import { MUSIC_LIBRARY, MusicTrack } from '@/src/services/musicLibrary';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { authService } from '@/src/services/authService';
 
 const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
@@ -36,6 +36,7 @@ export default function EditPostScreen() {
   const [clubSearch, setClubSearch] = useState('');
   const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const loadPost = useCallback(async () => {
     if (!user || !id) return;
@@ -68,6 +69,7 @@ export default function EditPostScreen() {
 
   useEffect(() => {
     loadPost();
+    authService.getAllUsers().then(users => setAllUsers(users));
   }, [loadPost]);
 
   useEffect(() => {
@@ -141,10 +143,10 @@ export default function EditPostScreen() {
     track.artist.toLowerCase().includes(musicSearch.toLowerCase())
   );
 
-  const clubUsers = MOCK_USERS.filter(u => u.role === 'club');
-  const filteredClubs = clubUsers.filter(club => 
-    club.username.toLowerCase().includes(clubSearch.toLowerCase()) ||
-    club.fullName.toLowerCase().includes(clubSearch.toLowerCase())
+  const clubUsers = allUsers.filter(u => u.role === 'club');
+  const filteredClubs = clubUsers.filter(club =>
+    (club.username || '').toLowerCase().includes(clubSearch.toLowerCase()) ||
+    (club.fullName || '').toLowerCase().includes(clubSearch.toLowerCase())
   ).slice(0, 10);
 
   const handleSave = async () => {

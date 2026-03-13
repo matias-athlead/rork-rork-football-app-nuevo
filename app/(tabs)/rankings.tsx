@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { Trophy, Medal, Award, Users, Target, Shield, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_USERS, MOCK_POSTS } from '@/src/services/mockData';
+import { authService } from '@/src/services/authService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/src/utils/theme';
+import { User, PlayerProfile, CoachProfile, ClubProfile } from '@/src/types/User';
+import { Post } from '@/src/types/Post';
 
 type RankingTab = 'scorers' | 'assisters' | 'plays' | 'teams' | 'coaches';
 type TimeFilter = 'week' | 'month' | 'season' | 'all';
+
+const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
 export default function RankingsScreen() {
   const { theme } = useTheme();
@@ -16,46 +22,70 @@ export default function RankingsScreen() {
   const [activeTab, setActiveTab] = useState<RankingTab>('scorers');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
   const [showFilters, setShowFilters] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const topScorers = MOCK_USERS.slice(0, 15)
-    .filter(u => u.role === 'player')
-    .map((user, index) => ({
-      user,
-      goals: 25 - index,
-      rank: index + 1,
-    }));
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [users, postsData] = await Promise.all([
+          authService.getAllUsers(),
+          AsyncStorage.getItem(POSTS_STORAGE_KEY),
+        ]);
+        setAllUsers(users);
+        if (postsData) {
+          const parsed = JSON.parse(postsData);
+          const posts: Post[] = [];
+          for (const userId in parsed) {
+            posts.push(...parsed[userId]);
+          }
+          setAllPosts(posts.sort((a, b) => (b.likes || 0) - (a.likes || 0)));
+        }
+      } catch {
+        // silently fail - show empty state
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
 
-  const topAssisters = MOCK_USERS.slice(5, 20)
-    .filter(u => u.role === 'player')
-    .map((user, index) => ({
-      user,
-      assists: 18 - index,
-      rank: index + 1,
-    }));
+  const players = allUsers.filter(u => u.role === 'player') as PlayerProfile[];
+  const coaches = allUsers.filter(u => u.role === 'coach') as CoachProfile[];
+  const clubs = allUsers.filter(u => u.role === 'club') as ClubProfile[];
 
-  const bestPlays = MOCK_POSTS.slice(0, 15).map((post, index) => ({
-    post,
-    votes: 2500 - index * 150,
+  const topScorers = players.slice(0, 15).map((user, index) => ({
+    user,
+    goals: Math.max(1, 25 - index),
     rank: index + 1,
   }));
 
-  const bestTeams = MOCK_USERS.slice(0, 10)
-    .filter(u => u.role === 'club')
-    .map((club, index) => ({
-      club,
-      wins: 20 - index,
-      points: 60 - index * 3,
-      rank: index + 1,
-    }));
+  const topAssisters = players.slice(0, 15).map((user, index) => ({
+    user,
+    assists: Math.max(1, 18 - index),
+    rank: index + 1,
+  }));
 
-  const bestCoaches = MOCK_USERS.slice(0, 15)
-    .filter(u => u.role === 'coach')
-    .map((coach, index) => ({
-      coach,
-      wins: 18 - index,
-      winRate: 75 - index * 2,
-      rank: index + 1,
-    }));
+  const bestPlays = allPosts.slice(0, 15).map((post, index) => ({
+    post,
+    votes: Math.max(1, 2500 - index * 150),
+    rank: index + 1,
+  }));
+
+  const bestTeams = clubs.slice(0, 10).map((club, index) => ({
+    club,
+    wins: Math.max(1, 20 - index),
+    points: Math.max(1, 60 - index * 3),
+    rank: index + 1,
+  }));
+
+  const bestCoaches = coaches.slice(0, 15).map((coach, index) => ({
+    coach,
+    wins: Math.max(1, 18 - index),
+    winRate: Math.max(1, 75 - index * 2),
+    rank: index + 1,
+  }));
 
   const tabs: { id: RankingTab; label: string; icon: any; color: string }[] = [
     { id: 'scorers', label: 'Goleadores', icon: Trophy, color: COLORS.warning },
@@ -65,9 +95,28 @@ export default function RankingsScreen() {
     { id: 'coaches', label: 'Entrenadores', icon: Users, color: COLORS.error },
   ];
 
+  const renderEmpty = (message: string) => (
+    <View style={styles.emptyContainer}>
+      <Award size={48} color={theme.textSecondary} strokeWidth={1.5} />
+      <Text style={[styles.emptyText, { color: theme.textSecondary }]}>{message}</Text>
+      <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+        Rankings update as users join and post content
+      </Text>
+    </View>
+  );
+
   const renderContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case 'scorers':
+        if (topScorers.length === 0) return renderEmpty('No players yet');
         return (
           <View style={styles.section}>
             {topScorers.map((item) => (
@@ -98,7 +147,7 @@ export default function RankingsScreen() {
                       {item.user.username}
                     </Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {'currentClub' in item.user ? item.user.currentClub : 'Player'}
+                      {item.user.currentClub || 'Player'}
                     </Text>
                   </View>
                 </View>
@@ -112,6 +161,7 @@ export default function RankingsScreen() {
         );
 
       case 'assisters':
+        if (topAssisters.length === 0) return renderEmpty('No players yet');
         return (
           <View style={styles.section}>
             {topAssisters.map((item) => (
@@ -142,7 +192,7 @@ export default function RankingsScreen() {
                       {item.user.username}
                     </Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {'currentClub' in item.user ? item.user.currentClub : 'Player'}
+                      {item.user.currentClub || 'Player'}
                     </Text>
                   </View>
                 </View>
@@ -156,6 +206,7 @@ export default function RankingsScreen() {
         );
 
       case 'plays':
+        if (bestPlays.length === 0) return renderEmpty('No posts yet');
         return (
           <View style={styles.section}>
             {bestPlays.map((item) => (
@@ -180,7 +231,11 @@ export default function RankingsScreen() {
                       {item.rank}
                     </Text>
                   </View>
-                  <Image source={{ uri: item.post.thumbnailUrl }} style={styles.thumbnail} />
+                  {item.post.thumbnailUrl ? (
+                    <Image source={{ uri: item.post.thumbnailUrl }} style={styles.thumbnail} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.thumbnail, { backgroundColor: theme.border }]} />
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.playUser, { color: theme.text }]} numberOfLines={1}>
                       {item.post.username}
@@ -192,7 +247,7 @@ export default function RankingsScreen() {
                 </View>
                 <View style={styles.voteContainer}>
                   <Award size={16} color={COLORS.skyBlue} />
-                  <Text style={[styles.votes, { color: theme.text }]}>{item.votes}</Text>
+                  <Text style={[styles.votes, { color: theme.text }]}>{item.post.likes || 0}</Text>
                 </View>
               </Pressable>
             ))}
@@ -200,6 +255,7 @@ export default function RankingsScreen() {
         );
 
       case 'teams':
+        if (bestTeams.length === 0) return renderEmpty('No clubs registered yet');
         return (
           <View style={styles.section}>
             {bestTeams.map((item) => (
@@ -230,7 +286,7 @@ export default function RankingsScreen() {
                       {item.club.username}
                     </Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {'clubName' in item.club ? item.club.clubName : 'Club'}
+                      {item.club.clubName || 'Club'}
                     </Text>
                   </View>
                 </View>
@@ -245,6 +301,7 @@ export default function RankingsScreen() {
         );
 
       case 'coaches':
+        if (bestCoaches.length === 0) return renderEmpty('No coaches registered yet');
         return (
           <View style={styles.section}>
             {bestCoaches.map((item) => (
@@ -275,7 +332,7 @@ export default function RankingsScreen() {
                       {item.coach.username}
                     </Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {'club' in item.coach ? item.coach.club : 'Coach'}
+                      {item.coach.club || 'Coach'}
                     </Text>
                   </View>
                 </View>
@@ -438,6 +495,26 @@ const styles = StyleSheet.create({
   section: {
     padding: 20,
   },
+  loadingContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   rankItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -462,11 +539,6 @@ const styles = StyleSheet.create({
   rankNumber: {
     fontSize: 14,
     fontWeight: 'bold',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
   },
   username: {
     fontSize: 16,

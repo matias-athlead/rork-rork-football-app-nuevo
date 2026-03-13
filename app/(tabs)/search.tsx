@@ -7,6 +7,7 @@ import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
 import { notificationService } from '@/src/services/notificationService';
+import { socialService } from '@/src/services/socialService';
 import { User, PlayerProfile } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
@@ -24,9 +25,15 @@ export default function SearchScreen() {
   const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    authService.getAllUsers().then(users => {
+    const load = async () => {
+      const [users, followedIds] = await Promise.all([
+        authService.getAllUsers(),
+        socialService.getFollowedUsers(),
+      ]);
       setAllUsers(users.filter(u => u.id !== currentUser?.id));
-    });
+      setFollowingUsers(new Set(followedIds));
+    };
+    load();
   }, [currentUser]);
 
   const filteredUsers = useMemo(() => {
@@ -35,9 +42,9 @@ export default function SearchScreen() {
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       result = result.filter(user =>
-        user.username.toLowerCase().includes(q) ||
-        user.fullName.toLowerCase().includes(q) ||
-        user.bio.toLowerCase().includes(q)
+        (user.username || '').toLowerCase().includes(q) ||
+        (user.fullName || '').toLowerCase().includes(q) ||
+        (user.bio || '').toLowerCase().includes(q)
       );
     }
 
@@ -50,16 +57,15 @@ export default function SearchScreen() {
     return result;
   }, [allUsers, searchQuery, activeFilter]);
 
-  const handleFollow = useCallback((userId: string, username: string, userPhoto: string, event: any) => {
+  const handleFollow = useCallback(async (userId: string, username: string, userPhoto: string, event: any) => {
     event.stopPropagation();
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+    const { isFollowing: nowFollowing } = await socialService.toggleFollow(userId);
     setFollowingUsers(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(userId)) {
-        newSet.delete(userId);
-      } else {
+      if (nowFollowing) {
         newSet.add(userId);
         if (currentUser && userId !== currentUser.id) {
           void notificationService.addNotification(userId, {
@@ -71,6 +77,8 @@ export default function SearchScreen() {
             isRead: false,
           });
         }
+      } else {
+        newSet.delete(userId);
       }
       return newSet;
     });
