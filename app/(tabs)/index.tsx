@@ -18,6 +18,7 @@ import Avatar from '@/src/components/Avatar';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
 import { notificationService } from '@/src/services/notificationService';
+import { socialService } from '@/src/services/socialService';
 
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 const FOLLOWED_USERS_KEY = '@athlead_followed_users';
@@ -34,6 +35,7 @@ export default function HomeScreen() {
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
   const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
   const [showLongPressMenu, setShowLongPressMenu] = useState(false);
   const [userReposts, setUserReposts] = useState<{[key: string]: boolean}>({});
   const [showSendModal, setShowSendModal] = useState(false);
@@ -123,18 +125,32 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    const loadBlockedUsers = async () => {
+      const ids = await socialService.getBlockedUserIds();
+      setBlockedUserIds(ids);
+    };
+    void loadBlockedUsers();
+  }, []);
+
+  useEffect(() => {
     const loadPosts = async () => {
       try {
-        const postsData = await AsyncStorage.getItem(POSTS_STORAGE_KEY);
+        const [postsData, likedPosts] = await Promise.all([
+          AsyncStorage.getItem(POSTS_STORAGE_KEY),
+          socialService.getLikedPosts(),
+        ]);
         if (postsData) {
           const allPosts = JSON.parse(postsData);
           const userPosts = [];
           for (const userId in allPosts) {
             userPosts.push(...allPosts[userId]);
           }
-          setPosts(userPosts.sort((a: Post, b: Post) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          ));
+          const sorted = userPosts
+            .sort((a: Post, b: Post) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            )
+            .map((p: Post) => ({ ...p, isLiked: !!likedPosts[p.id] }));
+          setPosts(sorted);
         }
       } catch (error) {
         console.log('Error loading posts:', error);
@@ -237,6 +253,7 @@ export default function HomeScreen() {
     setPosts(posts.map(p =>
       p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p
     ));
+    void socialService.toggleLike(postId);
     if (post && !post.isLiked && user && post.userId !== user.id) {
       void notificationService.addNotification(post.userId, {
         type: 'like',
@@ -382,28 +399,24 @@ export default function HomeScreen() {
     }
   };
 
-  const handleReport = (_post: Post) => {
+  const handleReport = (post: Post) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setShowLongPressMenu(false);
+    const report = (reason: string) => {
+      if (user) void socialService.reportPost(post.id, reason, user.id);
+      Alert.alert('Reported', 'Thanks for helping keep our community safe.');
+    };
     Alert.alert(
       'Report Post',
       'Why are you reporting this post?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Spam',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
-        {
-          text: 'Inappropriate Content',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
-        {
-          text: 'False Information',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
+        { text: 'Spam', onPress: () => report('Spam') },
+        { text: 'Inappropriate Content', onPress: () => report('Inappropriate Content') },
+        { text: 'False Information', onPress: () => report('False Information') },
+        { text: 'Harassment', onPress: () => report('Harassment') },
       ]
     );
   };
@@ -421,10 +434,13 @@ export default function HomeScreen() {
         {
           text: 'Block',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
+            await socialService.blockUser(post.userId, post.username, post.userPhoto || '');
+            setBlockedUserIds(prev => [...prev, post.userId]);
+            setPosts(prev => prev.filter(p => p.userId !== post.userId));
             Alert.alert('Blocked', `You have blocked @${post.username}`);
           },
         },
@@ -817,12 +833,16 @@ export default function HomeScreen() {
   };
 
   const filteredPosts = useMemo(() => {
-    const filtered = activeTab === 'following' 
+    const filtered = activeTab === 'following'
       ? posts.filter(p => followedUsers.includes(p.userId))
       : posts;
-    
-    return filtered.filter(p => !deletedPostIds.includes(p.id) && !deletedPostIds.includes(p.originalPostId || ''));
-  }, [activeTab, posts, followedUsers, deletedPostIds]);
+
+    return filtered.filter(p =>
+      !deletedPostIds.includes(p.id) &&
+      !deletedPostIds.includes(p.originalPostId || '') &&
+      !blockedUserIds.includes(p.userId)
+    );
+  }, [activeTab, posts, followedUsers, deletedPostIds, blockedUserIds]);
 
   const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
 

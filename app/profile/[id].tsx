@@ -9,6 +9,7 @@ import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
 import { notificationService } from '@/src/services/notificationService';
+import { socialService } from '@/src/services/socialService';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { Post } from '@/src/types/Post';
@@ -39,6 +40,8 @@ export default function ProfileDetailScreen() {
           const allPosts = JSON.parse(postsData);
           setUserPosts(allPosts[found.id] || []);
         }
+        const following = await socialService.isFollowing(found.id);
+        setIsFollowing(following);
       }
     };
     loadProfile();
@@ -51,7 +54,7 @@ export default function ProfileDetailScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    const nowFollowing = !isFollowing;
+    const { isFollowing: nowFollowing } = await socialService.toggleFollow(user.id);
     setIsFollowing(nowFollowing);
     if (nowFollowing) {
       void notificationService.addNotification(user.id, {

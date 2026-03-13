@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert, Modal, Platform, Animated, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share, Download } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit3, MoreVertical, Flag, UserX, MapPin, Music, Users, Heart, Repeat2, Send, Share, Download, MessageCircle } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Avatar from '@/src/components/Avatar';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_POSTS } from '@/src/services/mockData';
 import { COLORS } from '@/src/utils/theme';
+import { socialService } from '@/src/services/socialService';
 import { useAuth } from '@/src/hooks/useAuth';
 import VideoPlayer from '@/src/components/VideoPlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -43,27 +43,21 @@ export default function PostDetailScreen() {
       if (postsData) {
         const allPosts = JSON.parse(postsData);
         let foundPost = null;
-        
+
         for (const userId in allPosts) {
-          const userPosts = allPosts[userId];
-          foundPost = userPosts.find((p: any) => p.id === id);
+          foundPost = allPosts[userId].find((p: any) => p.id === id);
           if (foundPost) break;
         }
-        
+
         if (foundPost) {
+          // Merge persisted like state
+          const likedPosts = await socialService.getLikedPosts();
+          const persistedLiked = likedPosts[foundPost.id];
+          const isLikedNow = persistedLiked !== undefined ? persistedLiked : (foundPost.isLiked || false);
           setPost(foundPost);
-          setIsLiked(foundPost.isLiked || false);
+          setIsLiked(isLikedNow);
           setLikeCount(foundPost.likes || 0);
-        } else {
-          const mockPost = MOCK_POSTS.find(p => p.id === id);
-          setPost(mockPost || MOCK_POSTS[0]);
         }
-      } else {
-        const mockPost = MOCK_POSTS.find(p => p.id === id);
-        const postToSet = mockPost || MOCK_POSTS[0];
-        setPost(postToSet);
-        setIsLiked(postToSet?.isLiked || false);
-        setLikeCount(postToSet?.likes || 0);
       }
 
       if (user) {
@@ -71,19 +65,11 @@ export default function PostDetailScreen() {
         if (existingReposts) {
           const reposts = JSON.parse(existingReposts);
           const userRepostsList = reposts[user.id] || [];
-          const isAlreadyReposted = userRepostsList.some(
-            (r: any) => (r.originalPostId || r.id) === id
-          );
-          setIsReposted(isAlreadyReposted);
+          setIsReposted(userRepostsList.some((r: any) => (r.originalPostId || r.id) === id));
         }
       }
     } catch (error) {
       console.log('Error loading post:', error);
-      const mockPost = MOCK_POSTS.find(p => p.id === id);
-      const postToSet = mockPost || MOCK_POSTS[0];
-      setPost(postToSet);
-      setIsLiked(postToSet?.isLiked || false);
-      setLikeCount(postToSet?.likes || 0);
     } finally {
       setIsLoading(false);
     }
@@ -179,23 +165,21 @@ export default function PostDetailScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setShowOptionsMenu(false);
+    const doReport = (reason: string) => {
+      if (user && post) {
+        socialService.reportPost(post.id, reason, user.id).catch(() => {});
+      }
+      Alert.alert('Reported', 'Thanks for helping keep our community safe.');
+    };
     Alert.alert(
       'Report Post',
       'Why are you reporting this post?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Spam',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
-        {
-          text: 'Inappropriate Content',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
-        {
-          text: 'False Information',
-          onPress: () => Alert.alert('Reported', 'Thanks for helping keep our community safe.'),
-        },
+        { text: 'Spam', onPress: () => doReport('spam') },
+        { text: 'Inappropriate Content', onPress: () => doReport('inappropriate') },
+        { text: 'False Information', onPress: () => doReport('false_information') },
+        { text: 'Harassment', onPress: () => doReport('harassment') },
       ]
     );
   };
@@ -278,17 +262,21 @@ export default function PostDetailScreen() {
     setShowOptionsMenu(false);
     Alert.alert(
       'Block User',
-      `Are you sure you want to block @${post?.username}?`,
+      `Are you sure you want to block @${post?.username}? Their content will be hidden.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            if (post) {
+              await socialService.blockUser(post.userId, post.username, post.userPhoto);
+            }
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
             Alert.alert('Blocked', `You have blocked @${post?.username}`);
+            router.back();
           },
         },
       ]
@@ -583,25 +571,30 @@ export default function PostDetailScreen() {
           )}
 
           <View style={styles.stats}>
-            <Pressable onPress={() => {
-              setIsLiked(!isLiked);
+            <Pressable onPress={async () => {
+              const newLiked = !isLiked;
+              setIsLiked(newLiked);
               setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
               if (Platform.OS !== 'web') {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }
+              void socialService.toggleLike(post.id);
             }}>
               <View style={styles.likeButton}>
                 <Heart size={18} color={isLiked ? COLORS.error : theme.textSecondary} fill={isLiked ? COLORS.error : 'none'} />
                 <Text style={[styles.statText, { color: theme.textSecondary }]}>
-                  {likeCount} likes
+                  {likeCount} {likeCount === 1 ? 'like' : 'likes'}
                 </Text>
               </View>
             </Pressable>
+            <Pressable onPress={() => router.push(`/post-comments/${post.id}` as any)} style={styles.likeButton}>
+              <MessageCircle size={18} color={theme.textSecondary} />
+              <Text style={[styles.statText, { color: theme.textSecondary }]}>
+                {post.comments || 0} {(post.comments || 0) === 1 ? 'comment' : 'comments'}
+              </Text>
+            </Pressable>
             <Text style={[styles.statText, { color: theme.textSecondary }]}>
-              {post.comments || 0} comments
-            </Text>
-            <Text style={[styles.statText, { color: theme.textSecondary }]}>
-              {post.shares || 0} shares
+              {post.shares || 0} {(post.shares || 0) === 1 ? 'share' : 'shares'}
             </Text>
           </View>
 
