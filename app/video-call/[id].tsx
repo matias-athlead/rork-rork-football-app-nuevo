@@ -5,7 +5,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Phone, Mic, MicOff, Video, VideoOff, Camera, CameraOff, RefreshCw } from 'lucide-react-native';
 import { useCameraPermissions, useMicrophonePermissions, CameraView, CameraType } from 'expo-camera';
 import { useAuth } from '@/src/hooks/useAuth';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { authService } from '@/src/services/authService';
+import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 
@@ -24,8 +25,19 @@ export default function VideoCallScreen() {
 
   const [, requestCameraPermission] = useCameraPermissions();
   const [, requestMicPermission] = useMicrophonePermissions();
+  const [callingUser, setCallingUser] = useState<Partial<User>>({ username: '...', profilePhoto: 'https://i.pravatar.cc/300?img=1' });
 
-  const callingUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
+  useEffect(() => {
+    const loadUser = async () => {
+      const userId = Array.isArray(id) ? id[0] : String(id);
+      try {
+        const users = await authService.getAllUsers();
+        const found = users.find(u => u.id === userId);
+        if (found) setCallingUser(found);
+      } catch {}
+    };
+    loadUser();
+  }, [id]);
 
   const requestPermissions = useCallback(async () => {
     try {
@@ -180,6 +192,9 @@ export default function VideoCallScreen() {
             {isConnected ? formatDuration(callDuration) : 'Calling...'}
           </Text>
         </View>
+        <View style={styles.demoBadge}>
+          <Text style={styles.demoBadgeText}>Demo — Real video calls coming soon</Text>
+        </View>
       </View>
 
       <View style={styles.localVideoContainer}>
@@ -313,6 +328,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+  },
+  demoBadge: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  demoBadgeText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '500',
   },
   durationText: {
     color: COLORS.white,

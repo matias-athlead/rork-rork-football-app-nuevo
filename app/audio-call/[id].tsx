@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, SafeAreaView, Platform, Alert } from 'react-native';
-import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Phone, Mic, MicOff, Volume2, VolumeX } from 'lucide-react-native';
 import { Audio } from 'expo-av';
-import { MOCK_USERS } from '@/src/services/mockData';
+import Avatar from '@/src/components/Avatar';
+import { authService } from '@/src/services/authService';
+import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 
@@ -17,8 +18,19 @@ export default function AudioCallScreen() {
   const [isSpeaker, setIsSpeaker] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isRequesting, setIsRequesting] = useState(true);
+  const [callingUser, setCallingUser] = useState<Partial<User>>({ username: '...', profilePhoto: 'https://i.pravatar.cc/300?img=1' });
 
-  const callingUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
+  useEffect(() => {
+    const loadUser = async () => {
+      const userId = Array.isArray(id) ? id[0] : String(id);
+      try {
+        const users = await authService.getAllUsers();
+        const found = users.find(u => u.id === userId);
+        if (found) setCallingUser(found);
+      } catch {}
+    };
+    loadUser();
+  }, [id]);
 
   const requestMicrophonePermission = useCallback(async () => {
     try {
@@ -151,8 +163,11 @@ export default function AudioCallScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: COLORS.primary }]}>
       <View style={styles.content}>
         <View style={styles.userInfo}>
-          <Image source={{ uri: callingUser.profilePhoto }} style={styles.avatar} />
-          <Text style={styles.username}>{callingUser.username}</Text>
+          <View style={styles.demoBadge}>
+            <Text style={styles.demoBadgeText}>Demo Mode — Real calls coming soon</Text>
+          </View>
+          <Avatar uri={callingUser.profilePhoto || ''} username={callingUser.username || '...'} size={120} />
+          <Text style={styles.username}>{callingUser.username || '...'}</Text>
           <Text style={styles.status}>
             {isConnected ? formatDuration(callDuration) : 'Calling...'}
           </Text>
@@ -235,13 +250,21 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     alignItems: 'center',
-    marginTop: 60,
+    marginTop: 40,
+    gap: 12,
   },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 24,
+  demoBadge: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 8,
+  },
+  demoBadgeText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.9,
   },
   username: {
     fontSize: 32,

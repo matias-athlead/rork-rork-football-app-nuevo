@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Modal, Alert, FlatList as RNFlatList } from 'react-native';
 import { Image } from 'expo-image';
 import Avatar from '@/src/components/Avatar';
@@ -7,7 +7,8 @@ import { ArrowLeft, Send, Phone, Video, StickyNote, Plus, X, Check, Image as Ima
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { authService } from '@/src/services/authService';
+import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -73,7 +74,8 @@ export default function ChatScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const chatUser = MOCK_USERS.find(u => u.id === id) || MOCK_USERS[0];
+  const [chatUser, setChatUser] = useState<Partial<User> | null>(null);
+  const flatListRef = useRef<any>(null);
   const NOTES_KEY = `@chat_notes_${id}`;
   const TASKS_KEY = `@chat_tasks_${id}`;
   const MESSAGES_KEY = `@chat_messages_${id}`;
@@ -129,6 +131,48 @@ export default function ChatScreen() {
     loadMessages();
     loadDeletedPosts();
   }, [id, NOTES_KEY, TASKS_KEY, MESSAGES_KEY]);
+
+  useEffect(() => {
+    const loadChatUser = async () => {
+      const chatId = Array.isArray(id) ? id[0] : String(id);
+      if (chatId.startsWith('group_')) {
+        try {
+          const stored = await AsyncStorage.getItem('@athlead_groups');
+          if (stored) {
+            const groups = JSON.parse(stored);
+            const groupId = chatId.replace('group_', '');
+            const group = groups.find((g: any) => g.id === groupId);
+            if (group) {
+              setChatUser({ id: chatId, username: group.name, profilePhoto: group.photo } as any);
+              return;
+            }
+          }
+        } catch {}
+        setChatUser({ id: chatId, username: 'Group Chat', profilePhoto: '' } as any);
+      } else {
+        try {
+          const users = await authService.getAllUsers();
+          const found = users.find(u => u.id === chatId);
+          if (found) {
+            setChatUser(found);
+          } else {
+            setChatUser({ id: chatId, username: chatId, profilePhoto: '' } as any);
+          }
+        } catch {
+          setChatUser({ id: chatId, username: chatId, profilePhoto: '' } as any);
+        }
+      }
+    };
+    loadChatUser();
+  }, [id]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages.length]);
 
   const saveNotes = async (updatedNotes: Note[]) => {
     try {
@@ -291,6 +335,28 @@ export default function ChatScreen() {
     setMessages(updatedMessages);
     saveMessages(updatedMessages);
     setMessage('');
+
+    // Simulate a reply for real-time feel
+    const chatId = Array.isArray(id) ? id[0] : String(id);
+    if (!chatId.startsWith('group_')) {
+      const autoReplies = ['👍', 'Sure!', 'Got it!', 'OK!', 'Sounds good!', '🔥', 'Thanks!', 'Let me know', '👏', 'On it!'];
+      const replyText = autoReplies[Math.floor(Math.random() * autoReplies.length)];
+      const replyKey = MESSAGES_KEY;
+      const replyDelay = 1200 + Math.random() * 1800;
+      setTimeout(() => {
+        const reply: ChatMessage = {
+          id: `reply_${Date.now()}`,
+          text: replyText,
+          isSent: false,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => {
+          const updated = [...prev, reply];
+          AsyncStorage.setItem(replyKey, JSON.stringify(updated)).catch(() => {});
+          return updated;
+        });
+      }, replyDelay);
+    }
   };
 
   const handleViewEphemeralPhoto = (messageId: string) => {
@@ -320,8 +386,8 @@ export default function ChatScreen() {
         }} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
-        <Avatar uri={chatUser.profilePhoto} username={chatUser.username} size={40} />
-        <Text style={[styles.username, { color: theme.text }]}>{chatUser.username}</Text>
+        <Avatar uri={chatUser?.profilePhoto || ''} username={chatUser?.username || '...'} size={40} />
+        <Text style={[styles.username, { color: theme.text }]}>{chatUser?.username || '...'}</Text>
         <View style={styles.headerActions}>
           <Pressable onPress={() => router.push(`/audio-call/${id}` as any)} style={styles.headerAction}>
             <Phone size={22} color={theme.text} />
@@ -512,11 +578,12 @@ export default function ChatScreen() {
             {messages.length === 0 ? (
               <View style={styles.emptyMessagesView}>
                 <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                  {`Start a conversation with ${chatUser.username}`}
+                  {`Start a conversation with ${chatUser?.username || '...'}`}
                 </Text>
               </View>
             ) : (
               <RNFlatList
+                ref={flatListRef}
                 data={messages.filter(m => !m.postData || !deletedPostIds.includes(m.postData.id))}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.messagesList}

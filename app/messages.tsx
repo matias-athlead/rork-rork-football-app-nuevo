@@ -5,7 +5,9 @@ import Avatar from '@/src/components/Avatar';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Search, Plus, X, Users, Camera, Play, UserMinus, UserPlus, LogOut, BellOff, Bell, FileText, Flag, Ban, ChevronRight, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/src/hooks/useTheme';
-import { MOCK_USERS } from '@/src/services/mockData';
+import { useAuth } from '@/src/hooks/useAuth';
+import { authService } from '@/src/services/authService';
+import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -49,7 +51,9 @@ const GROUPS_KEY = '@athlead_groups';
 
 export default function MessagesScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
@@ -69,7 +73,17 @@ export default function MessagesScreen() {
   useEffect(() => {
     loadGroups();
     loadChatPreviews();
+    loadRegisteredUsers();
   }, []);
+
+  const loadRegisteredUsers = async () => {
+    try {
+      const users = await authService.getAllUsers();
+      setRegisteredUsers(users.filter(u => u.id !== user?.id));
+    } catch (error) {
+      console.log('Error loading registered users:', error);
+    }
+  };
 
   const loadGroups = async () => {
     try {
@@ -116,16 +130,16 @@ export default function MessagesScreen() {
     }
   };
 
-  const directChats: ChatPreview[] = MOCK_USERS.slice(0, 15).map((user, index) => {
-    const preview = chatPreviews[user.id];
+  const directChats: ChatPreview[] = registeredUsers.slice(0, 15).map((contact, index) => {
+    const preview = chatPreviews[contact.id];
     return {
-      id: user.id,
+      id: contact.id,
       type: 'direct' as const,
-      name: user.username,
-      photo: user.profilePhoto,
-      lastMessage: preview?.lastMessage || 'Hey! How are you doing?',
-      timestamp: `${index + 1}h ago`,
-      unread: index % 3 === 0,
+      name: contact.username,
+      photo: contact.profilePhoto,
+      lastMessage: preview?.lastMessage || 'Tap to start a conversation',
+      timestamp: preview ? `${index + 1}h ago` : '',
+      unread: preview ? index % 3 === 0 : false,
       sharedPost: preview?.sharedPost,
     };
   });
@@ -517,7 +531,7 @@ export default function MessagesScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              No messages found
+              {searchQuery ? 'No messages found' : 'No conversations yet.\nRegister more accounts to start messaging!'}
             </Text>
           </View>
         }
@@ -564,7 +578,7 @@ export default function MessagesScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>{`Select Members (${selectedUsers.length})`}</Text>
                 <FlatList
-                  data={MOCK_USERS.slice(0, 10)}
+                  data={registeredUsers.slice(0, 10)}
                   style={styles.usersList}
                   keyExtractor={(item) => item.id}
                   renderItem={({ item }) => {
@@ -756,7 +770,7 @@ export default function MessagesScreen() {
               </Pressable>
             </View>
             <FlatList
-              data={MOCK_USERS.filter(u => !selectedGroup?.members.includes(u.id)).slice(0, 15)}
+              data={registeredUsers.filter(u => !selectedGroup?.members.includes(u.id)).slice(0, 15)}
               style={styles.usersList}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
@@ -817,7 +831,7 @@ export default function MessagesScreen() {
               </Pressable>
             </View>
             <FlatList
-              data={MOCK_USERS.filter(u => selectedGroup?.members.includes(u.id))}
+              data={registeredUsers.filter(u => selectedGroup?.members.includes(u.id))}
               style={styles.usersList}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
