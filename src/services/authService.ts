@@ -541,6 +541,75 @@ export const authService = {
     }
   },
 
+  async deleteAccount(userId: string, email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 1. Remove user from registered users store
+    try {
+      const users = await loadUsersStore();
+      if (users[normalizedEmail]) {
+        delete users[normalizedEmail];
+        await saveUsersStore(users);
+      }
+    } catch {}
+
+    // 2. Remove user's posts from @athlead_user_posts
+    try {
+      const postsRaw = await AsyncStorage.getItem('@athlead_user_posts');
+      if (postsRaw) {
+        const allPosts = JSON.parse(postsRaw);
+        delete allPosts[userId];
+        await AsyncStorage.setItem('@athlead_user_posts', JSON.stringify(allPosts));
+      }
+    } catch {}
+
+    // 3. Remove user's reposts from @athlead_user_reposts
+    try {
+      const repostsRaw = await AsyncStorage.getItem('@athlead_user_reposts');
+      if (repostsRaw) {
+        const allReposts = JSON.parse(repostsRaw);
+        delete allReposts[userId];
+        await AsyncStorage.setItem('@athlead_user_reposts', JSON.stringify(allReposts));
+      }
+    } catch {}
+
+    // 4. Delete all user-specific single-user keys
+    const userSpecificKeys = [
+      `@athlead_in_app_notifications_${userId}`,
+      '@athlead_liked_posts',
+      '@athlead_followed_users',
+      '@athlead_blocked_users',
+      '@athlead_privacy_settings',
+      '@athlead_notification_settings',
+      '@athlead_birthday_notifications_sent',
+      '@athlead_reports',
+      '@athlead_deleted_posts',
+      '@athlead_groups',
+      '@user_profile',
+    ];
+    try {
+      await AsyncStorage.multiRemove(userSpecificKeys);
+    } catch {}
+
+    // 5. Remove all @chat_* keys (messages, notes, tasks with other users)
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const chatKeys = allKeys.filter(k =>
+        k.startsWith('@chat_messages_') ||
+        k.startsWith('@chat_notes_') ||
+        k.startsWith('@chat_tasks_')
+      );
+      if (chatKeys.length > 0) {
+        await AsyncStorage.multiRemove(chatKeys);
+      }
+    } catch {}
+
+    // 6. Clear session keys (token, user data, profile)
+    await this.logout();
+
+    console.log('[AUTH] deleteAccount — all data removed for userId:', userId);
+  },
+
   async clearAllAuthData(): Promise<void> {
     await storage.multiRemove([
       AUTH_TOKEN_KEY,

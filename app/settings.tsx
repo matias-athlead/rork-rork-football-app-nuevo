@@ -10,9 +10,10 @@ import LanguageSelector from '@/src/components/LanguageSelector';
 
 export default function SettingsScreen() {
   const { theme, themeMode, setThemeMode, isDark } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const router = useRouter();
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
   const handleLogout = () => {
@@ -32,15 +33,34 @@ export default function SettingsScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
+      'Are you sure you want to permanently delete your account? This will remove all your posts, messages, followers, and account data. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Continue',
           style: 'destructive',
-          onPress: async () => {
-            await logout();
-            router.replace('/onboarding');
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              `You are about to delete the account for ${user?.email ?? 'this account'}. All data will be permanently erased.`,
+              [
+                { text: 'Go Back', style: 'cancel' },
+                {
+                  text: 'Delete Forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setIsDeletingAccount(true);
+                    try {
+                      await deleteAccount();
+                      router.replace('/onboarding');
+                    } catch {
+                      setIsDeletingAccount(false);
+                      Alert.alert('Error', 'Failed to delete account. Please try again.');
+                    }
+                  },
+                },
+              ]
+            );
           },
         },
       ]
@@ -182,10 +202,13 @@ export default function SettingsScreen() {
 
         <Pressable
           onPress={handleDeleteAccount}
-          style={[styles.deleteButton, { backgroundColor: theme.card }]}
+          disabled={isDeletingAccount}
+          style={[styles.deleteButton, { backgroundColor: theme.card, opacity: isDeletingAccount ? 0.5 : 1 }]}
         >
           <Trash2 size={22} color={COLORS.error} />
-          <Text style={[styles.deleteText, { color: COLORS.error }]}>Delete Account</Text>
+          <Text style={[styles.deleteText, { color: COLORS.error }]}>
+            {isDeletingAccount ? 'Deleting…' : 'Delete Account'}
+          </Text>
         </Pressable>
 
         <Text style={[styles.version, { color: theme.textSecondary }]}>

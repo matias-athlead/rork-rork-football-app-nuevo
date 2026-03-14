@@ -14,6 +14,7 @@ interface AuthContextValue {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: User) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   clearAllAuthData: () => Promise<void>;
 }
 
@@ -75,6 +76,13 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     setUser(updated);
   };
 
+  const deleteAccount = async () => {
+    if (!user) return;
+    await authService.deleteAccount(user.id, user.email);
+    setUser(null);
+    setToken(null);
+  };
+
   const clearAllAuthData = async () => {
     await authService.clearAllAuthData();
     setUser(null);
@@ -92,6 +100,7 @@ export const [AuthProvider, useAuth] = createContextHook((): AuthContextValue =>
     register,
     logout,
     updateUser,
+    deleteAccount,
     clearAllAuthData,
   };
 });
