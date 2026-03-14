@@ -177,6 +177,11 @@ export const authService = {
       throw new Error(`Incorrect password for "${email}". (If you just registered, try again — hash mismatch detected.)`);
     }
 
+    // Clear any stale session before writing new one
+    await storage.removeItem(AUTH_TOKEN_KEY);
+    await storage.removeItem(USER_DATA_KEY);
+    try { await AsyncStorage.removeItem('@user_profile'); } catch {}
+
     const token = generateToken();
     await storage.setItem(AUTH_TOKEN_KEY, token);
     await storage.setItem(USER_DATA_KEY, JSON.stringify(registeredUser.user));
@@ -240,6 +245,11 @@ export const authService = {
         existingUser = { user: newUser, passwordHash: hashPassword(tempPassword) };
       }
 
+      // Clear any stale session before writing new one
+      await storage.removeItem(AUTH_TOKEN_KEY);
+      await storage.removeItem(USER_DATA_KEY);
+      try { await AsyncStorage.removeItem('@user_profile'); } catch {}
+
       const token = generateToken();
       await storage.setItem(AUTH_TOKEN_KEY, token);
       await storage.setItem(USER_DATA_KEY, JSON.stringify(existingUser.user));
@@ -294,6 +304,11 @@ export const authService = {
       await saveRegisteredUser(newUser, tempPassword);
       existingUser = { user: newUser, passwordHash: hashPassword(tempPassword) };
     }
+
+    // Clear any stale session before writing new one
+    await storage.removeItem(AUTH_TOKEN_KEY);
+    await storage.removeItem(USER_DATA_KEY);
+    try { await AsyncStorage.removeItem('@user_profile'); } catch {}
 
     const token = generateToken();
     await storage.setItem(AUTH_TOKEN_KEY, token);
@@ -403,6 +418,11 @@ export const authService = {
       throw new Error('Registration failed: could not save account data. Please try again.');
     }
 
+    // Clear any stale session before writing new one
+    await storage.removeItem(AUTH_TOKEN_KEY);
+    await storage.removeItem(USER_DATA_KEY);
+    try { await AsyncStorage.removeItem('@user_profile'); } catch {}
+
     const token = generateToken();
     await storage.setItem(AUTH_TOKEN_KEY, token);
     await storage.setItem(USER_DATA_KEY, JSON.stringify(newUser));
@@ -412,8 +432,17 @@ export const authService = {
   },
 
   async logout(): Promise<void> {
+    // Clear auth keys (handles web localStorage vs native AsyncStorage)
     await storage.removeItem(AUTH_TOKEN_KEY);
     await storage.removeItem(USER_DATA_KEY);
+    // Clear @user_profile — written by edit-profile.tsx via AsyncStorage directly
+    try { await AsyncStorage.removeItem('@user_profile'); } catch {}
+    // On web, AsyncStorage may use a different backend than window.localStorage.
+    // Belt-and-suspenders: also clear auth keys from AsyncStorage on web.
+    if (Platform.OS === 'web') {
+      try { await AsyncStorage.removeItem(AUTH_TOKEN_KEY); } catch {}
+      try { await AsyncStorage.removeItem(USER_DATA_KEY); } catch {}
+    }
   },
 
   async getStoredAuth(): Promise<AuthResponse | null> {
