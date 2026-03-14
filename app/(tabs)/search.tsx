@@ -62,7 +62,7 @@ export default function SearchScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    const { isFollowing: nowFollowing } = await socialService.toggleFollow(userId);
+    const { isFollowing: nowFollowing, targetFollowers } = await socialService.toggleFollow(userId, currentUser?.id);
     setFollowingUsers(prev => {
       const newSet = new Set(prev);
       if (nowFollowing) {
@@ -87,6 +87,8 @@ export default function SearchScreen() {
       }
       return newSet;
     });
+    // Update follower count in local list instantly
+    setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, followers: targetFollowers } : u));
   }, [currentUser]);
 
   const handleMessage = useCallback((userId: string, event: any) => {

@@ -124,17 +124,53 @@ export const socialService = {
     return followed.includes(userId);
   },
 
-  async toggleFollow(userId: string): Promise<{ isFollowing: boolean; followedUsers: string[] }> {
+  async toggleFollow(
+    targetUserId: string,
+    currentUserId?: string,
+  ): Promise<{ isFollowing: boolean; followedUsers: string[]; targetFollowers: number }> {
     try {
       const followed = await this.getFollowedUsers();
-      const isNowFollowing = !followed.includes(userId);
+      const isNowFollowing = !followed.includes(targetUserId);
       const updated = isNowFollowing
-        ? [...followed, userId]
-        : followed.filter(id => id !== userId);
+        ? [...followed, targetUserId]
+        : followed.filter(id => id !== targetUserId);
       await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(updated));
-      return { isFollowing: isNowFollowing, followedUsers: updated };
+
+      // Update followers/following counts in the registered users store
+      let targetFollowers = 0;
+      if (currentUserId) {
+        try {
+          const raw = await AsyncStorage.getItem('@athlead_registered_users');
+          if (raw) {
+            const users = JSON.parse(raw);
+            const delta = isNowFollowing ? 1 : -1;
+            for (const key in users) {
+              if (users[key].user?.id === targetUserId) {
+                users[key].user.followers = Math.max(0, (users[key].user.followers || 0) + delta);
+                targetFollowers = users[key].user.followers;
+              }
+              if (users[key].user?.id === currentUserId) {
+                users[key].user.following = Math.max(0, (users[key].user.following || 0) + delta);
+              }
+            }
+            await AsyncStorage.setItem('@athlead_registered_users', JSON.stringify(users));
+          }
+          // Sync the current user's session data so auth hook reflects new following count
+          const userDataRaw = await AsyncStorage.getItem('@athlead_user_data');
+          if (userDataRaw) {
+            const userData = JSON.parse(userDataRaw);
+            if (userData.id === currentUserId) {
+              const delta = isNowFollowing ? 1 : -1;
+              userData.following = Math.max(0, (userData.following || 0) + delta);
+              await AsyncStorage.setItem('@athlead_user_data', JSON.stringify(userData));
+            }
+          }
+        } catch {}
+      }
+
+      return { isFollowing: isNowFollowing, followedUsers: updated, targetFollowers };
     } catch {
-      return { isFollowing: false, followedUsers: [] };
+      return { isFollowing: false, followedUsers: [], targetFollowers: 0 };
     }
   },
 

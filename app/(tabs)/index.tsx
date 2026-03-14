@@ -652,30 +652,19 @@ export default function HomeScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-
     try {
-      const isFollowing = followedUsers.includes(userId);
-      let updatedFollowedUsers: string[];
-
-      if (isFollowing) {
-        updatedFollowedUsers = followedUsers.filter(id => id !== userId);
-      } else {
-        updatedFollowedUsers = [...followedUsers, userId];
-        if (user && userId !== user.id) {
-          void notificationService.addNotification(userId, {
-            type: 'follow',
-            userId: user.id,
-            username: user.username,
-            userPhoto: user.profilePhoto,
-            content: 'started following you',
-            isRead: false,
-          });
-        }
+      const { isFollowing: nowFollowing, followedUsers: updatedList } = await socialService.toggleFollow(userId, user?.id);
+      setFollowedUsers(updatedList);
+      if (nowFollowing && user && userId !== user.id) {
+        void notificationService.addNotification(userId, {
+          type: 'follow',
+          userId: user.id,
+          username: user.username,
+          userPhoto: user.profilePhoto,
+          content: 'started following you',
+          isRead: false,
+        });
       }
-
-      setFollowedUsers(updatedFollowedUsers);
-      await AsyncStorage.setItem(FOLLOWED_USERS_KEY, JSON.stringify(updatedFollowedUsers));
-
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }

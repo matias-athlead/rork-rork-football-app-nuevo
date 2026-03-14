@@ -20,7 +20,7 @@ const POSTS_STORAGE_KEY = '@athlead_user_posts';
 
 export default function ProfileDetailScreen() {
   const { theme } = useTheme();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [isFollowing, setIsFollowing] = useState(false);
@@ -54,8 +54,13 @@ export default function ProfileDetailScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    const { isFollowing: nowFollowing } = await socialService.toggleFollow(user.id);
+    const { isFollowing: nowFollowing, targetFollowers } = await socialService.toggleFollow(user.id, currentUser.id);
     setIsFollowing(nowFollowing);
+    // Update displayed follower count instantly
+    setUser(prev => prev ? { ...prev, followers: targetFollowers } : prev);
+    // Sync current user's following count in auth state
+    const delta = nowFollowing ? 1 : -1;
+    updateUser({ ...currentUser, following: Math.max(0, (currentUser.following || 0) + delta) });
     if (nowFollowing) {
       void notificationService.addNotification(
         user.id,
@@ -170,7 +175,7 @@ export default function ProfileDetailScreen() {
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Posts</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: theme.text }]}>{user.followers + (isFollowing ? 1 : 0)}</Text>
+              <Text style={[styles.statValue, { color: theme.text }]}>{user.followers}</Text>
               <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Followers</Text>
             </View>
             <View style={styles.stat}>
