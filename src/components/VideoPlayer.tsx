@@ -14,17 +14,19 @@ interface VideoPlayerProps {
   loop?: boolean;
   forceMute?: boolean;
   isVisible?: boolean;
+  paused?: boolean;
 }
 
-export default function VideoPlayer({ 
-  uri, 
-  style, 
-  autoPlay = false, 
+export default function VideoPlayer({
+  uri,
+  style,
+  autoPlay = false,
   isFocused = true,
   showControls = true,
   loop = true,
   forceMute = false,
-  isVisible = true
+  isVisible = true,
+  paused = false,
 }: VideoPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
@@ -51,11 +53,11 @@ export default function VideoPlayer({
   useEffect(() => {
     const handleVisibility = async () => {
       if (!videoRef.current || !isMounted.current || hasError) return;
-      
+      const shouldPlay = isVisible && isFocused && !paused;
       try {
         if (Platform.OS === 'web') {
           const video = videoRef.current as any;
-          if (isVisible && isFocused) {
+          if (shouldPlay) {
             await video.play();
             if (isMounted.current) setIsPlaying(true);
           } else {
@@ -63,7 +65,7 @@ export default function VideoPlayer({
             if (isMounted.current) setIsPlaying(false);
           }
         } else {
-          if (isVisible && isFocused) {
+          if (shouldPlay) {
             await (videoRef.current as any).playAsync();
             if (isMounted.current) setIsPlaying(true);
           } else {
@@ -75,10 +77,10 @@ export default function VideoPlayer({
         console.log('Video playback error:', e);
       }
     };
-    
+
     const timeoutId = setTimeout(handleVisibility, 100);
     return () => clearTimeout(timeoutId);
-  }, [isVisible, isFocused, hasError]);
+  }, [isVisible, isFocused, paused, hasError]);
 
   const handlePress = async () => {
     if (!videoRef.current || hasError) return;

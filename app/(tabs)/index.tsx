@@ -1,8 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, SafeAreaView, Platform, PanResponder, Animated, Dimensions, ViewabilityConfig, ViewToken, Modal, Alert, ScrollView, TextInput } from 'react-native';
-import { Image } from 'expo-image';
+import {
+  View, Text, StyleSheet, FlatList, Pressable, Platform,
+  Animated, Dimensions, ViewabilityConfig, ViewToken,
+  Modal, Alert, ScrollView, TextInput,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle, UserPlus, Bell, Send, Flag, MapPin, Music, Users, Repeat2, UserX, Share, Search, X, Download, Video, Plus } from 'lucide-react-native';
+import {
+  Heart, MessageCircle, Send, Flag, MapPin, Music,
+  Users, Repeat2, UserX, Share, Search, X, Download,
+  Video, UserPlus, Bell, Play, Pause, Plus,
+} from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
@@ -23,6 +30,13 @@ import { socialService } from '@/src/services/socialService';
 const REPOSTS_STORAGE_KEY = '@athlead_user_reposts';
 const FOLLOWED_USERS_KEY = '@athlead_followed_users';
 const DELETED_POSTS_KEY = '@athlead_deleted_posts';
+const DOUBLE_TAP_DELAY = 300;
+
+const formatCount = (n: number): string => {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+};
 
 export default function HomeScreen() {
   const { theme } = useTheme();
@@ -31,8 +45,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou');
   const [posts, setPosts] = useState<Post[]>([]);
-  const [metadataIndexMap, setMetadataIndexMap] = useState<{[key: string]: number}>({});
-  const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
+  const [visiblePostId, setVisiblePostId] = useState<string>('');
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
   const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
@@ -42,98 +55,74 @@ export default function HomeScreen() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [sendSearchQuery, setSendSearchQuery] = useState('');
-  const panX = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const screenWidth = Dimensions.get('window').width;
+  const [pausedPostIds, setPausedPostIds] = useState<Set<string>>(new Set());
+  const [feedHeight, setFeedHeight] = useState(Dimensions.get('window').height);
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
+
   const POSTS_STORAGE_KEY = '@athlead_user_posts';
-  const lastTapMap = useRef<{[key: string]: number}>({});
+
+  // Animation refs
   const likeAnimationMap = useRef<{[key: string]: Animated.Value}>({});
+  const playPauseAnimMap = useRef<{[key: string]: Animated.Value}>({});
+  const likeButtonAnimMap = useRef<{[key: string]: Animated.Value}>({});
+  const singleTapTimerRef = useRef<{[key: string]: ReturnType<typeof setTimeout>}>({});
+  const lastTapMap = useRef<{[key: string]: number}>({});
 
-  const convertAspectRatio = (ratio?: string): number | 'auto' => {
-    if (!ratio) return 9/16;
-    if (ratio === 'auto') return 'auto';
-    if (ratio.includes(':')) {
-      const [w, h] = ratio.split(':').map(Number);
-      return w / h;
-    }
-    if (ratio.includes('/')) {
-      const [w, h] = ratio.split('/').map(Number);
-      return w / h;
-    }
-    return 9/16;
-  };
+  // Swipe-to-messages animation
+  const panX = useRef(new Animated.Value(0)).current;
+  const swipeOpacity = useRef(new Animated.Value(0)).current;
 
-  const viewabilityConfig: ViewabilityConfig = {
-    itemVisiblePercentThreshold: 50,
-  };
+  const viewabilityConfig: ViewabilityConfig = { itemVisiblePercentThreshold: 60 };
+
+  // ── Data loading ────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const loadFollowedUsers = async () => {
+    const load = async () => {
       try {
         const stored = await AsyncStorage.getItem(FOLLOWED_USERS_KEY);
-        if (stored) {
-          setFollowedUsers(JSON.parse(stored));
-        } else {
-          setFollowedUsers([]);
-        }
-      } catch (error) {
-        console.log('Error loading followed users:', error);
-      }
+        setFollowedUsers(stored ? JSON.parse(stored) : []);
+      } catch {}
     };
-    void loadFollowedUsers();
+    void load();
   }, []);
 
   useEffect(() => {
-    const loadUserReposts = async () => {
+    const load = async () => {
       if (!user) return;
       try {
-        const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
-        if (existingReposts) {
-          const reposts = JSON.parse(existingReposts);
+        const raw = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+        if (raw) {
+          const reposts = JSON.parse(raw);
           const userRepostsList = reposts[user.id] || [];
-          const repostMap: {[key: string]: boolean} = {};
-          userRepostsList.forEach((repost: any) => {
-            const originalId = repost.originalPostId || repost.id;
-            repostMap[originalId] = true;
-          });
-          setUserReposts(repostMap);
+          const map: {[key: string]: boolean} = {};
+          userRepostsList.forEach((r: any) => { map[r.originalPostId || r.id] = true; });
+          setUserReposts(map);
         }
-      } catch (error) {
-        console.log('Error loading user reposts:', error);
-      }
+      } catch {}
     };
-    void loadUserReposts();
+    void load();
   }, [user]);
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    const visibleIds = viewableItems.map(item => item.item.id);
-    setVisiblePostIds(visibleIds);
-  }).current;
-
   useEffect(() => {
-    const loadDeletedPosts = async () => {
+    const load = async () => {
       try {
-        const deletedData = await AsyncStorage.getItem(DELETED_POSTS_KEY);
-        if (deletedData) {
-          setDeletedPostIds(JSON.parse(deletedData));
-        }
-      } catch (error) {
-        console.log('Error loading deleted posts:', error);
-      }
+        const raw = await AsyncStorage.getItem(DELETED_POSTS_KEY);
+        setDeletedPostIds(raw ? JSON.parse(raw) : []);
+      } catch {}
     };
-    void loadDeletedPosts();
+    void load();
   }, []);
 
   useEffect(() => {
-    const loadBlockedUsers = async () => {
+    const load = async () => {
       const ids = await socialService.getBlockedUserIds();
       setBlockedUserIds(ids);
     };
-    void loadBlockedUsers();
+    void load();
   }, []);
 
   useEffect(() => {
-    const loadPosts = async () => {
+    const load = async () => {
       try {
         const [postsData, likedPosts] = await Promise.all([
           AsyncStorage.getItem(POSTS_STORAGE_KEY),
@@ -141,1522 +130,745 @@ export default function HomeScreen() {
         ]);
         if (postsData) {
           const allPosts = JSON.parse(postsData);
-          const userPosts = [];
-          for (const userId in allPosts) {
-            userPosts.push(...allPosts[userId]);
-          }
-          const sorted = userPosts
-            .sort((a: Post, b: Post) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            )
-            .map((p: Post) => ({ ...p, isLiked: !!likedPosts[p.id] }));
+          const flat: Post[] = [];
+          for (const uid in allPosts) flat.push(...allPosts[uid]);
+          const sorted = flat
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .map(p => ({ ...p, isLiked: !!likedPosts[p.id] }));
           setPosts(sorted);
         }
-      } catch (error) {
-        console.log('Error loading posts:', error);
-      }
+      } catch {}
     };
-    void loadPosts();
+    void load();
   }, []);
 
   useEffect(() => {
-    const intervals: {[key: string]: ReturnType<typeof setInterval>} = {};
-    
-    posts.forEach(post => {
-      const metadataItems = [];
-      if (post.location) metadataItems.push('location');
-      if (post.musicTitle) metadataItems.push('music');
-      if (post.clubTag) metadataItems.push('club');
-      
-      if (metadataItems.length > 1) {
-        intervals[post.id] = setInterval(() => {
-          setMetadataIndexMap(prev => ({
-            ...prev,
-            [post.id]: ((prev[post.id] || 0) + 1) % metadataItems.length
-          }));
-        }, 3000);
-      }
-    });
-
-    return () => {
-      Object.values(intervals).forEach(clearInterval);
+    const load = async () => {
+      try { setRegisteredUsers(await authService.getAllUsers()); } catch {}
     };
-  }, [posts]);
+    void load();
+  }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        const isDraggingLeft = gestureState.dx < 0;
-        const isHorizontal = Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
-        return isDraggingLeft && isHorizontal && Math.abs(gestureState.dx) > 5;
-      },
-      onPanResponderGrant: () => {
-        if (Platform.OS !== 'web') {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dx < 0) {
-          const progress = Math.min(Math.abs(gestureState.dx) / 100, 1);
-          panX.setValue(gestureState.dx);
-          opacity.setValue(progress * 0.3);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const velocity = gestureState.vx;
-        const shouldNavigate = gestureState.dx < -60 || velocity < -0.5;
-        
-        if (shouldNavigate) {
-          if (Platform.OS !== 'web') {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-          Animated.parallel([
-            Animated.timing(panX, {
-              toValue: -screenWidth,
-              duration: 280,
-              useNativeDriver: true,
-            }),
-            Animated.timing(opacity, {
-              toValue: 1,
-              duration: 280,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            panX.setValue(0);
-            opacity.setValue(0);
-            router.push('/messages');
-          });
-        } else {
-          Animated.parallel([
-            Animated.spring(panX, {
-              toValue: 0,
-              tension: 65,
-              friction: 8,
-              useNativeDriver: true,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start();
-        }
-      },
-    })
-  ).current;
-
-  const handleLike = (postId: string) => {
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0) {
+      setVisiblePostId(viewableItems[0].item.id);
     }
+  }).current;
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  const getAnim = (map: React.MutableRefObject<{[key: string]: Animated.Value}>, id: string, initial = 0) => {
+    if (!map.current[id]) map.current[id] = new Animated.Value(initial);
+    return map.current[id];
+  };
+
+  // ── Interaction handlers ─────────────────────────────────────────────────────
+
+  const handleLike = (postId: string, fromDoubleTap = false) => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const post = posts.find(p => p.id === postId);
-    setPosts(posts.map(p =>
+    if (!post) return;
+    if (fromDoubleTap && post.isLiked) return; // double-tap only likes, never unlikes
+
+    // Animate like button
+    const btnAnim = getAnim(likeButtonAnimMap, postId, 1);
+    Animated.sequence([
+      Animated.spring(btnAnim, { toValue: 1.4, useNativeDriver: true, friction: 3 }),
+      Animated.spring(btnAnim, { toValue: 1, useNativeDriver: true, friction: 3 }),
+    ]).start();
+
+    setPosts(prev => prev.map(p =>
       p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p
     ));
     void socialService.toggleLike(postId);
-    if (post && !post.isLiked && user && post.userId !== user.id) {
+    if (!post.isLiked && user && post.userId !== user.id) {
       void notificationService.addNotification(
         post.userId,
-        {
-          type: 'like',
-          userId: user.id,
-          username: user.username,
-          userPhoto: user.profilePhoto,
-          content: 'liked your post',
-          postId: post.id,
-          postThumbnail: post.thumbnailUrl,
-          isRead: false,
-        },
-        '❤️ New like',
-        `${user.username} liked your post`,
+        { type: 'like', userId: user.id, username: user.username, userPhoto: user.profilePhoto,
+          content: 'liked your post', postId: post.id, postThumbnail: post.thumbnailUrl, isRead: false },
+        '❤️ New like', `${user.username} liked your post`,
       );
     }
   };
 
   const handleComment = (postId: string) => {
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push(`/post-comments/${postId}` as any);
   };
 
-  const handleVote = (postId: string) => {
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    setPosts(posts.map(p => 
-      p.id === postId ? { ...p, votes: (p.votes || 0) + (p.isVoted ? -1 : 1), isVoted: !p.isVoted } : p
-    ));
-  };
-
-  const handleShareOutside = async (post: Post) => {
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setShowLongPressMenu(false);
-    try {
-      if (Platform.OS === 'web') {
-        if (navigator.share) {
-          await navigator.share({
-            title: `${post.username}'s post`,
-            text: post.caption,
-            url: post.videoUrl
-          });
-        } else {
-          await navigator.clipboard.writeText(post.videoUrl);
-          alert('Link copied to clipboard!');
-        }
-      } else {
-        const isAvailable = await Sharing.isAvailableAsync();
-        if (isAvailable) {
-          await Sharing.shareAsync(post.videoUrl, {
-            dialogTitle: `Share ${post.username}'s post`
-          });
-        }
-      }
-    } catch (error) {
-      console.log('Share error:', error);
-    }
-  };
-
-  const handleRepost = async (post: Post) => {
-    if (!user) return;
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    setShowLongPressMenu(false);
-
-    const originalPostId = post.originalPostId || post.id;
-
-    try {
-      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
-      const reposts = existingReposts ? JSON.parse(existingReposts) : {};
-      
-      if (!reposts[user.id]) {
-        reposts[user.id] = [];
-      }
-
-      const repost = {
-        ...post,
-        id: `repost_${Date.now()}`,
-        originalPostId: originalPostId,
-        repostedBy: user.id,
-        repostedByUsername: user.username,
-        repostedByPhoto: user.profilePhoto,
-        repostedAt: new Date().toISOString(),
-      };
-
-      reposts[user.id].unshift(repost);
-      await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
-
-      setUserReposts(prev => ({...prev, [originalPostId]: true}));
-
-      setPosts(prevPosts => [repost, ...prevPosts]);
-
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      Alert.alert('Success', 'Post reposted to your profile!');
-    } catch (error) {
-      console.log('Error reposting:', error);
-      Alert.alert('Error', 'Failed to repost');
-    }
-  };
-
-  const handleRemoveRepost = async (post: Post) => {
-    if (!user) return;
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    setShowLongPressMenu(false);
-
-    const originalPostId = post.originalPostId || post.id;
-
-    try {
-      const existingReposts = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
-      if (existingReposts) {
-        const reposts = JSON.parse(existingReposts);
-        if (reposts[user.id]) {
-          reposts[user.id] = reposts[user.id].filter(
-            (r: any) => (r.originalPostId || r.id) !== originalPostId
-          );
-          await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
-          
-          setUserReposts(prev => {
-            const newReposts = {...prev};
-            delete newReposts[originalPostId];
-            return newReposts;
-          });
-
-          setPosts(prevPosts => prevPosts.filter(p => 
-            !(p.repostedBy === user.id && (p.originalPostId || p.id) === originalPostId)
-          ));
-
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          Alert.alert('Success', 'Repost removed from your profile!');
-        }
-      }
-    } catch (error) {
-      console.log('Error removing repost:', error);
-      Alert.alert('Error', 'Failed to remove repost');
-    }
-  };
-
   const handleReport = (post: Post) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowLongPressMenu(false);
     const report = (reason: string) => {
       if (user) void socialService.reportPost(post.id, reason, user.id);
       Alert.alert('Reported', 'Thanks for helping keep our community safe.');
     };
-    Alert.alert(
-      'Report Post',
-      'Why are you reporting this post?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Spam', onPress: () => report('Spam') },
-        { text: 'Inappropriate Content', onPress: () => report('Inappropriate Content') },
-        { text: 'False Information', onPress: () => report('False Information') },
-        { text: 'Harassment', onPress: () => report('Harassment') },
-      ]
-    );
+    Alert.alert('Report Post', 'Why are you reporting this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Inappropriate content', onPress: () => report('Inappropriate Content') },
+      { text: 'Spam', onPress: () => report('Spam') },
+      { text: 'Harassment', onPress: () => report('Harassment') },
+      { text: 'False information', onPress: () => report('False Information') },
+    ]);
+  };
+
+  const handleShareOutside = async (post: Post) => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowLongPressMenu(false);
+    try {
+      if (Platform.OS === 'web') {
+        if (navigator.share) {
+          await navigator.share({ title: `${post.username}'s post`, text: post.caption, url: post.videoUrl });
+        } else {
+          await navigator.clipboard.writeText(post.videoUrl);
+          alert('Link copied!');
+        }
+      } else {
+        const available = await Sharing.isAvailableAsync();
+        if (available) await Sharing.shareAsync(post.videoUrl, { dialogTitle: `Share ${post.username}'s post` });
+      }
+    } catch {}
+  };
+
+  const handleRepost = async (post: Post) => {
+    if (!user) return;
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowLongPressMenu(false);
+    const originalPostId = post.originalPostId || post.id;
+    try {
+      const raw = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      const reposts = raw ? JSON.parse(raw) : {};
+      if (!reposts[user.id]) reposts[user.id] = [];
+      const repost = { ...post, id: `repost_${Date.now()}`, originalPostId,
+        repostedBy: user.id, repostedByUsername: user.username,
+        repostedByPhoto: user.profilePhoto, repostedAt: new Date().toISOString() };
+      reposts[user.id].unshift(repost);
+      await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+      setUserReposts(prev => ({ ...prev, [originalPostId]: true }));
+      setPosts(prev => [repost, ...prev]);
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Post reposted to your profile!');
+    } catch { Alert.alert('Error', 'Failed to repost'); }
+  };
+
+  const handleRemoveRepost = async (post: Post) => {
+    if (!user) return;
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowLongPressMenu(false);
+    const originalPostId = post.originalPostId || post.id;
+    try {
+      const raw = await AsyncStorage.getItem(REPOSTS_STORAGE_KEY);
+      if (raw) {
+        const reposts = JSON.parse(raw);
+        if (reposts[user.id]) {
+          reposts[user.id] = reposts[user.id].filter((r: any) => (r.originalPostId || r.id) !== originalPostId);
+          await AsyncStorage.setItem(REPOSTS_STORAGE_KEY, JSON.stringify(reposts));
+          setUserReposts(prev => { const n = { ...prev }; delete n[originalPostId]; return n; });
+          setPosts(prev => prev.filter(p => !(p.repostedBy === user.id && (p.originalPostId || p.id) === originalPostId)));
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert('Success', 'Repost removed!');
+        }
+      }
+    } catch { Alert.alert('Error', 'Failed to remove repost'); }
   };
 
   const handleBlockUser = (post: Post) => {
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setShowLongPressMenu(false);
-    Alert.alert(
-      'Block User',
-      `Are you sure you want to block @${post.username}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            await socialService.blockUser(post.userId, post.username, post.userPhoto || '');
-            setBlockedUserIds(prev => [...prev, post.userId]);
-            setPosts(prev => prev.filter(p => p.userId !== post.userId));
-            Alert.alert('Blocked', `You have blocked @${post.username}`);
-          },
-        },
-      ]
-    );
+    Alert.alert('Block User', `Block @${post.username}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Block', style: 'destructive', onPress: async () => {
+        await socialService.blockUser(post.userId, post.username, post.userPhoto || '');
+        setBlockedUserIds(prev => [...prev, post.userId]);
+        setPosts(prev => prev.filter(p => p.userId !== post.userId));
+        Alert.alert('Blocked', `You have blocked @${post.username}`);
+      }},
+    ]);
   };
 
   const handleSendToUsers = (post: Post) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPost(post);
     setSendSearchQuery('');
     setShowSendModal(true);
   };
 
   const handleToggleUserSelection = (userId: string) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setSelectedUsers(prev => 
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
+  };
+
+  const sendPostToUser = async (userId: string, post: Post) => {
+    const key = `@chat_messages_${userId}`;
+    const raw = await AsyncStorage.getItem(key);
+    const msgs = raw ? JSON.parse(raw) : [];
+    msgs.push({ id: `${Date.now()}${Math.random()}`, text: '',
+      postData: { id: post.id, userId: post.userId, username: post.username, userPhoto: post.userPhoto,
+        videoUrl: post.videoUrl, thumbnailUrl: post.thumbnailUrl, caption: post.caption, likes: post.likes },
+      isSent: true, createdAt: new Date().toISOString() });
+    await AsyncStorage.setItem(key, JSON.stringify(msgs));
   };
 
   const handleConfirmSend = async () => {
-    if (selectedUsers.length === 0) {
-      Alert.alert('Error', 'Please select at least one user');
-      return;
-    }
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
+    if (selectedUsers.length === 0) { Alert.alert('Error', 'Select at least one user'); return; }
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (selectedPost) {
-      for (const userId of selectedUsers) {
-        try {
-          const MESSAGES_KEY = `@chat_messages_${userId}`;
-          const storedMessages = await AsyncStorage.getItem(MESSAGES_KEY);
-          const messages = storedMessages ? JSON.parse(storedMessages) : [];
-          
-          const postMessage = {
-            id: Date.now().toString() + Math.random(),
-            text: '',
-            postData: {
-              id: selectedPost.id,
-              userId: selectedPost.userId,
-              username: selectedPost.username,
-              userPhoto: selectedPost.userPhoto,
-              videoUrl: selectedPost.videoUrl,
-              thumbnailUrl: selectedPost.thumbnailUrl,
-              caption: selectedPost.caption,
-              likes: selectedPost.likes,
-            },
-            isSent: true,
-            createdAt: new Date().toISOString(),
-          };
-          
-          messages.push(postMessage);
-          await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
-        } catch (error) {
-          console.log('Error sending post to user:', error);
-        }
-      }
+      for (const uid of selectedUsers) { try { await sendPostToUser(uid, selectedPost); } catch {} }
     }
-
     Alert.alert('Sent!', `Post sent to ${selectedUsers.length} user${selectedUsers.length > 1 ? 's' : ''}`);
-    setShowSendModal(false);
-    setSelectedUsers([]);
-    setSelectedPost(null);
-    setSendSearchQuery('');
+    setShowSendModal(false); setSelectedUsers([]); setSelectedPost(null); setSendSearchQuery('');
   };
 
   const handleQuickSend = async (userId: string, username: string) => {
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
-    if (selectedPost) {
-      try {
-        const MESSAGES_KEY = `@chat_messages_${userId}`;
-        const storedMessages = await AsyncStorage.getItem(MESSAGES_KEY);
-        const messages = storedMessages ? JSON.parse(storedMessages) : [];
-        
-        const postMessage = {
-          id: Date.now().toString() + Math.random(),
-          text: '',
-          postData: {
-            id: selectedPost.id,
-            userId: selectedPost.userId,
-            username: selectedPost.username,
-            userPhoto: selectedPost.userPhoto,
-            videoUrl: selectedPost.videoUrl,
-            thumbnailUrl: selectedPost.thumbnailUrl,
-            caption: selectedPost.caption,
-            likes: selectedPost.likes,
-          },
-          isSent: true,
-          createdAt: new Date().toISOString(),
-        };
-        
-        messages.push(postMessage);
-        await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
-      } catch (error) {
-        console.log('Error sending post to user:', error);
-      }
-    }
-
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (selectedPost) { try { await sendPostToUser(userId, selectedPost); } catch {} }
     Alert.alert('Sent!', `Post sent to ${username}`);
-    setShowSendModal(false);
-    setSelectedUsers([]);
-    setSelectedPost(null);
-    setSendSearchQuery('');
-  };
-
-  const handleDoubleTap = (postId: string) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 500;
-    const lastTap = lastTapMap.current[postId] || 0;
-
-    if (now - lastTap < DOUBLE_TAP_DELAY) {
-      const post = posts.find(p => p.id === postId);
-      if (post && !post.isLiked) {
-        handleLike(postId);
-        
-        if (!likeAnimationMap.current[postId]) {
-          likeAnimationMap.current[postId] = new Animated.Value(0);
-        }
-        const anim = likeAnimationMap.current[postId];
-        
-        Animated.sequence([
-          Animated.spring(anim, {
-            toValue: 1,
-            useNativeDriver: true,
-            friction: 3,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 300,
-            delay: 400,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }
-    }
-    lastTapMap.current[postId] = now;
-  };
-
-  const handleLongPress = (post: Post) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }
-    setSelectedPost(post);
-    setShowLongPressMenu(true);
+    setShowSendModal(false); setSelectedUsers([]); setSelectedPost(null); setSendSearchQuery('');
   };
 
   const handleDownloadVideo = async (post: Post) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowLongPressMenu(false);
-    
-    if (Platform.OS === ('web' as any)) {
-      try {
-        const link = document.createElement('a');
-        link.href = post.videoUrl;
-        link.download = `${post.username}_video.mp4`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        Alert.alert('Download Started', 'Your video download has started');
-      } catch (error) {
-        console.log('Download error:', error);
-        Alert.alert('Error', 'Could not download video');
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Need permission to save videos'); return; }
+      Alert.alert('Downloading', 'Your video is being downloaded...');
+      const downloaded = await File.downloadFileAsync(post.videoUrl, Paths.cache);
+      if (downloaded?.exists) {
+        const asset = await MediaLibrary.createAssetAsync(downloaded.uri);
+        await MediaLibrary.createAlbumAsync('Athlead', asset, false);
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Success', 'Video saved to your gallery!');
       }
-    } else {
-      try {
-        const { status } = await MediaLibrary.requestPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'We need permission to save videos to your library');
-          return;
-        }
-
-        Alert.alert('Downloading', 'Your video is being downloaded...');
-        const downloadedFile = await File.downloadFileAsync(post.videoUrl, Paths.cache);
-        
-        if (downloadedFile && downloadedFile.exists) {
-          const asset = await MediaLibrary.createAssetAsync(downloadedFile.uri);
-          await MediaLibrary.createAlbumAsync('Athlead', asset, false);
-          
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          Alert.alert('Success', 'Video saved to your gallery!');
-        }
-      } catch (error) {
-        console.log('Download error:', error);
-        Alert.alert('Error', 'Failed to download video');
-      }
-    }
+    } catch { Alert.alert('Error', 'Failed to download video'); }
   };
 
   const handleFollowToggle = async (userId: string, username?: string, userPhoto?: string) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const { isFollowing: nowFollowing, followedUsers: updatedList } = await socialService.toggleFollow(userId, user?.id);
       setFollowedUsers(updatedList);
       if (nowFollowing && user && userId !== user.id) {
         void notificationService.addNotification(userId, {
-          type: 'follow',
-          userId: user.id,
-          username: user.username,
-          userPhoto: user.profilePhoto,
-          content: 'started following you',
-          isRead: false,
+          type: 'follow', userId: user.id, username: user.username, userPhoto: user.profilePhoto,
+          content: 'started following you', isRead: false,
         });
       }
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (error) {
-      console.log('Error toggling follow:', error);
-    }
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {}
   };
 
-  const renderPost = ({ item }: { item: Post }) => {
-    const metadataItems = [];
-    if (item.location) metadataItems.push({ type: 'location', content: item.location });
-    if (item.musicTitle) metadataItems.push({ 
-      type: 'music', 
-      content: `${item.musicTitle}${item.musicArtist ? ' • ' + item.musicArtist : ''}` 
-    });
-    if (item.clubTag) metadataItems.push({ type: 'club', content: `@${item.clubTag}` });
-    
-    const metadataIndex = metadataIndexMap[item.id] || 0;
-    const currentMetadata = metadataItems[metadataIndex % metadataItems.length];
-    const isVisible = visiblePostIds.includes(item.id);
-    const isReposted = item.repostedBy && item.repostedByUsername;
-
-    if (!likeAnimationMap.current[item.id]) {
-      likeAnimationMap.current[item.id] = new Animated.Value(0);
-    }
-    const likeAnim = likeAnimationMap.current[item.id];
-
-    return (
-    <Pressable 
-      onPress={() => handleDoubleTap(item.id)}
-      onLongPress={() => handleLongPress(item)}
-      delayLongPress={800}
-      style={[styles.postCard, { backgroundColor: theme.card }]}
-    >
-      {isReposted && (
-        <View style={styles.repostHeader}>
-          <Repeat2 size={14} color={theme.textSecondary} />
-          <Text style={[styles.repostText, { color: theme.textSecondary }]}>
-            {item.repostedByUsername} reposted
-          </Text>
-        </View>
-      )}
-      <View style={styles.postHeader}>
-        <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)} style={styles.postHeaderUser}>
-          <Avatar uri={item.userPhoto} username={item.username} size={40} />
-          <View style={styles.postHeaderInfo}>
-            <Text style={[styles.postUsername, { color: theme.text }]}>{item.username}</Text>
-            <Text style={[styles.postRole, { color: theme.textSecondary }]}>{item.userRole ? item.userRole.toUpperCase() : 'USER'}</Text>
-          </View>
-        </Pressable>
-        <Pressable 
-          onPress={() => handleFollowToggle(item.userId, item.username, item.userPhoto)}
-          style={[styles.followButton, { 
-            backgroundColor: followedUsers.includes(item.userId) ? theme.border : COLORS.skyBlue 
-          }]}
-        >
-          {followedUsers.includes(item.userId) ? (
-            <Text style={[styles.followButtonText, { color: theme.text }]}>Following</Text>
-          ) : (
-            <UserPlus size={16} color={COLORS.white} />
-          )}
-        </Pressable>
-      </View>
-
-      <View style={[styles.videoWrapper, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}>
-        <View style={styles.videoTouchOverlay}>
-          {isReposted && item.repostedByPhoto && (
-            <View style={styles.repostBadge}>
-              <Avatar uri={item.repostedByPhoto} username={item.repostedByUsername} size={40} style={{ borderWidth: 2, borderColor: COLORS.white }} />
-              <View style={styles.repostIconContainer}>
-                <Repeat2 size={12} color={COLORS.white} />
-              </View>
-            </View>
-          )}
-          <VideoPlayer
-            uri={item.videoUrl}
-            style={[styles.postImage, { aspectRatio: convertAspectRatio(item.aspectRatio) }]}
-            autoPlay={false}
-            loop={true}
-            showControls={true}
-            forceMute={!!(item as any).musicUrl}
-            isVisible={isVisible}
-          />
-          
-          {currentMetadata && (
-            <View style={styles.metadataOverlay}>
-              <View style={styles.overlayItemSingle}>
-                {currentMetadata.type === 'location' && <MapPin size={14} color={COLORS.white} />}
-                {currentMetadata.type === 'music' && <Music size={14} color={COLORS.white} />}
-                {currentMetadata.type === 'club' && <Users size={14} color={COLORS.white} />}
-                <Text style={styles.overlayText} numberOfLines={1}>{currentMetadata.content}</Text>
-              </View>
-            </View>
-          )}
-
-          <Animated.View 
-            style={[styles.likeAnimationContainer, {
-              opacity: likeAnim,
-              transform: [{
-                scale: likeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.5, 1.2],
-                }),
-              }],
-            }]}
-            pointerEvents="none"
-          >
-            <Heart size={80} color={COLORS.white} fill={COLORS.white} />
-          </Animated.View>
-        </View>
-      </View>
-
-      <View style={styles.postActions}>
-        <View style={styles.leftActions}>
-          <Pressable onPress={() => handleLike(item.id)} style={styles.actionBtn}>
-            <Heart
-              size={26}
-              color={item.isLiked ? COLORS.error : theme.text}
-              fill={item.isLiked ? COLORS.error : 'transparent'}
-            />
-          </Pressable>
-          <Pressable onPress={() => handleComment(item.id)} style={styles.actionBtn}>
-            <MessageCircle size={26} color={theme.text} />
-          </Pressable>
-          <Pressable onPress={() => handleVote(item.id)} style={styles.actionBtn}>
-            <Flag
-              size={26}
-              color={item.isVoted ? COLORS.skyBlue : theme.text}
-              fill={item.isVoted ? COLORS.skyBlue : 'transparent'}
-            />
-          </Pressable>
-          <Pressable onPress={() => handleSendToUsers(item)} style={styles.actionBtn}>
-            <Send size={26} color={theme.text} />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.postInfo}>
-        <Text style={[styles.likesCount, { color: theme.text }]}>{`${item.likes} ${t('home.likes')}`}</Text>
-        <Text style={[styles.postCaption, { color: theme.text }]} numberOfLines={2}>
-          <Text style={styles.captionUsername}>{item.username}</Text>
-          {` ${item.caption}`}
-        </Text>
-        {item.hashtags && Array.isArray(item.hashtags) && item.hashtags.length > 0 && (
-          <Text style={styles.postHashtags}>{item.hashtags.join(' ')}</Text>
-        )}
-        {item.comments > 0 && (
-          <Text style={[styles.viewComments, { color: theme.textSecondary }]}>
-            {`View all ${item.comments} ${t('home.comments')}`}
-          </Text>
-        )}
-        {(item.votes || 0) > 0 && (
-          <Text style={[styles.votesCount, { color: COLORS.skyBlue }]}>
-            {`${item.votes || 0} ${(item.votes || 0) === 1 ? 'vote' : 'votes'}`}
-          </Text>
-        )}
-      </View>
-    </Pressable>
-    );
+  const handleLongPress = (post: Post) => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setSelectedPost(post);
+    setShowLongPressMenu(true);
   };
+
+  // ── Double-tap / single-tap detection ───────────────────────────────────────
+
+  const showHeartAnim = (postId: string) => {
+    const anim = getAnim(likeAnimationMap, postId);
+    Animated.sequence([
+      Animated.spring(anim, { toValue: 1, useNativeDriver: true, friction: 3 }),
+      Animated.timing(anim, { toValue: 0, duration: 300, delay: 500, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const showPlayPauseAnim = (postId: string) => {
+    const anim = getAnim(playPauseAnimMap, postId);
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 1, duration: 80, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 0, duration: 300, delay: 600, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const handleVideoTap = (item: Post) => {
+    const now = Date.now();
+    const lastTap = lastTapMap.current[item.id] || 0;
+
+    if (now - lastTap < DOUBLE_TAP_DELAY) {
+      // Double tap — like + heart animation
+      clearTimeout(singleTapTimerRef.current[item.id]);
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      showHeartAnim(item.id);
+      handleLike(item.id, true);
+    } else {
+      // Might be single tap — wait to confirm
+      singleTapTimerRef.current[item.id] = setTimeout(() => {
+        // Single tap confirmed — toggle pause
+        setPausedPostIds(prev => {
+          const next = new Set(prev);
+          if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+          return next;
+        });
+        showPlayPauseAnim(item.id);
+      }, DOUBLE_TAP_DELAY);
+    }
+    lastTapMap.current[item.id] = now;
+  };
+
+  // ── Filtered posts ───────────────────────────────────────────────────────────
 
   const filteredPosts = useMemo(() => {
-    const filtered = activeTab === 'following'
+    const base = activeTab === 'following'
       ? posts.filter(p => followedUsers.includes(p.userId))
       : posts;
-
-    return filtered.filter(p =>
+    return base.filter(p =>
       !deletedPostIds.includes(p.id) &&
       !deletedPostIds.includes(p.originalPostId || '') &&
       !blockedUserIds.includes(p.userId)
     );
   }, [activeTab, posts, followedUsers, deletedPostIds, blockedUserIds]);
 
-  const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const users = await authService.getAllUsers();
-        setRegisteredUsers(users);
-      } catch (error) {
-        console.log('Error loading users:', error);
-      }
-    };
-    void loadUsers();
-  }, []);
-
   const chatUsers = useMemo(() => registeredUsers.slice(0, 15), [registeredUsers]);
-
   const filteredChatUsers = useMemo(() => {
     if (!sendSearchQuery.trim()) return chatUsers;
-    const query = sendSearchQuery.toLowerCase();
-    return chatUsers.filter((u: User) => 
-      u.username.toLowerCase().includes(query) ||
-      u.fullName.toLowerCase().includes(query)
-    );
+    const q = sendSearchQuery.toLowerCase();
+    return chatUsers.filter(u => u.username.toLowerCase().includes(q) || u.fullName.toLowerCase().includes(q));
   }, [sendSearchQuery, chatUsers]);
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.topHeader, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-        <Text style={[styles.logo, { color: theme.text }]}>Athlead</Text>
-        <View style={styles.headerIcons}>
-          <Pressable onPress={() => router.push('/messages')} style={styles.headerIcon}>
-            <Send size={24} color={theme.text} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/notifications' as any)} style={styles.headerIcon}>
-            <Bell size={24} color={theme.text} />
-          </Pressable>
-        </View>
-      </View>
+  // ── Render post (TikTok fullscreen) ─────────────────────────────────────────
 
-      <View style={[styles.tabHeader, { backgroundColor: theme.background }]}>
-        <Pressable
-          onPress={() => setActiveTab('following')}
-          style={[styles.tab, activeTab === 'following' && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'following' ? theme.text : theme.textSecondary }]}>
-            Following
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setActiveTab('forYou')}
-          style={[styles.tab, activeTab === 'forYou' && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'forYou' ? theme.text : theme.textSecondary }]}>
-            For You
-          </Text>
-        </Pressable>
-      </View>
+  const renderPost = ({ item }: { item: Post }) => {
+    const isVisible = visiblePostId === item.id;
+    const isPaused = pausedPostIds.has(item.id);
+    const isFollowing = followedUsers.includes(item.userId);
+    const isOwnPost = user?.id === item.userId;
+    const isReposted = !!(item.repostedBy && item.repostedByUsername);
 
-      <View style={styles.feedWrapper}>
+    const likeAnim = getAnim(likeAnimationMap, item.id);
+    const playPauseAnim = getAnim(playPauseAnimMap, item.id);
+    const likeScale = getAnim(likeButtonAnimMap, item.id, 1);
+
+    return (
+      <View style={[styles.postCard, { height: feedHeight }]}>
+        {/* Full-screen video */}
+        <VideoPlayer
+          uri={item.videoUrl}
+          style={StyleSheet.absoluteFill}
+          autoPlay={false}
+          loop={true}
+          showControls={false}
+          isVisible={isVisible}
+          paused={isPaused}
+        />
+
+        {/* Tap overlay: single tap = play/pause, double tap = like, long press = menu */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => handleVideoTap(item)}
+          onLongPress={() => handleLongPress(item)}
+          delayLongPress={600}
+        />
+
+        {/* Heart animation (double tap) */}
         <Animated.View
-          style={[
-            styles.swipeIndicator,
-            {
-              opacity,
-            },
-          ]}
+          style={[styles.heartAnimation, {
+            opacity: likeAnim,
+            transform: [{ scale: likeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1.3] }) }],
+          }]}
           pointerEvents="none"
         >
-          <View style={[styles.swipeIndicatorContent, { backgroundColor: theme.card }]}>
-            <Send size={24} color={COLORS.skyBlue} />
-            <Text style={[styles.swipeIndicatorText, { color: theme.text }]}>Messages</Text>
+          <Heart size={100} color={COLORS.white} fill={COLORS.white} />
+        </Animated.View>
+
+        {/* Play/Pause animation (single tap) */}
+        <Animated.View style={[styles.playPauseAnimation, { opacity: playPauseAnim }]} pointerEvents="none">
+          <View style={styles.playPauseBg}>
+            {isPaused
+              ? <Play size={44} color={COLORS.white} fill={COLORS.white} />
+              : <Pause size={44} color={COLORS.white} fill={COLORS.white} />
+            }
           </View>
         </Animated.View>
-        <Animated.View
-          style={[
-            styles.feedContainer,
-            {
-              transform: [{ translateX: panX }],
-            },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          <FlatList
-          data={filteredPosts}
-          renderItem={renderPost}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.listContent,
-            filteredPosts.length === 0 && styles.emptyListContent
-          ]}
-          scrollEnabled={true}
-          viewabilityConfig={viewabilityConfig}
-          onViewableItemsChanged={onViewableItemsChanged}
-          ListEmptyComponent={() => {
-            if (activeTab === 'following') {
-              return (
-                <View style={styles.emptyStateContainer}>
-                  <View style={[styles.emptyStateIconContainer, { backgroundColor: `${COLORS.skyBlue}20` }]}>
-                    <Users size={48} color={COLORS.skyBlue} />
-                  </View>
-                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No posts yet</Text>
-                  <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary }]}>
-                    Follow players and clubs to see their content here
-                  </Text>
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/search' as any)}
-                    style={[styles.createPostButton, { backgroundColor: COLORS.skyBlue }]}
-                  >
-                    <Search size={20} color={COLORS.white} />
-                    <Text style={styles.createPostButtonText}>Discover Players</Text>
-                  </Pressable>
-                </View>
-              );
-            }
-            return (
-              <View style={styles.emptyStateContainer}>
-                {user && (
-                  <Text style={[styles.emptyWelcome, { color: theme.text }]}>
-                    Welcome, {user.fullName.split(' ')[0]}!
-                  </Text>
-                )}
-                <Text style={[styles.emptyStateSubtitle, { color: theme.textSecondary, marginBottom: 24 }]}>
-                  Your feed is empty. Here's how to get started:
-                </Text>
 
-                <Pressable
-                  onPress={() => router.push('/(tabs)/search' as any)}
-                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
-                >
-                  <View style={[styles.emptyActionIcon, { backgroundColor: `${COLORS.skyBlue}18` }]}>
-                    <Users size={22} color={COLORS.skyBlue} />
-                  </View>
-                  <View style={styles.emptyActionText}>
-                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Find Players & Clubs</Text>
-                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Follow people to fill your feed</Text>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => router.push('/(tabs)/create' as any)}
-                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
-                >
-                  <View style={[styles.emptyActionIcon, { backgroundColor: `${COLORS.primary}18` }]}>
-                    <Video size={22} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.emptyActionText}>
-                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Share Your First Play</Text>
-                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Upload a highlight or photo</Text>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => router.push('/edit-profile' as any)}
-                  style={[styles.emptyActionCard, { backgroundColor: theme.card }]}
-                >
-                  <View style={[styles.emptyActionIcon, { backgroundColor: '#f59e0b18' }]}>
-                    <UserPlus size={22} color="#f59e0b" />
-                  </View>
-                  <View style={styles.emptyActionText}>
-                    <Text style={[styles.emptyActionTitle, { color: theme.text }]}>Complete Your Profile</Text>
-                    <Text style={[styles.emptyActionDesc, { color: theme.textSecondary }]}>Add bio, stats, and a cover photo</Text>
-                  </View>
-                </Pressable>
-              </View>
-            );
-          }}
-          />
-        </Animated.View>
-      </View>
-
-      <Modal
-        visible={showLongPressMenu}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowLongPressMenu(false)}
-      >
-        <Pressable style={styles.longPressOverlay} onPress={() => setShowLongPressMenu(false)}>
-          <View style={[styles.longPressMenu, { backgroundColor: theme.card }]}>
-            {selectedPost && userReposts[selectedPost.originalPostId || selectedPost.id] ? (
-              <Pressable 
-                onPress={() => selectedPost && handleRemoveRepost(selectedPost)} 
-                style={styles.longPressItem}
-              >
-                <Repeat2 size={24} color={COLORS.error} />
-                <Text style={[styles.longPressText, { color: COLORS.error }]}>Remove Repost</Text>
+        {/* Top overlay: header tabs */}
+        <View style={styles.topOverlay} pointerEvents="box-none">
+          <View style={styles.overlayHeader} pointerEvents="box-none">
+            <Pressable onPress={() => router.push('/messages')} style={styles.overlayIconBtn}>
+              <Send size={22} color={COLORS.white} />
+            </Pressable>
+            <View style={styles.tabRow}>
+              <Pressable onPress={() => setActiveTab('following')} style={styles.tabBtn}>
+                <Text style={[styles.tabBtnText, activeTab === 'following' && styles.tabBtnActive]}>Following</Text>
+                {activeTab === 'following' && <View style={styles.tabUnderline} />}
               </Pressable>
-            ) : (
-              <Pressable 
-                onPress={() => selectedPost && handleRepost(selectedPost)} 
-                style={styles.longPressItem}
+              <Pressable onPress={() => setActiveTab('forYou')} style={styles.tabBtn}>
+                <Text style={[styles.tabBtnText, activeTab === 'forYou' && styles.tabBtnActive]}>For You</Text>
+                {activeTab === 'forYou' && <View style={styles.tabUnderline} />}
+              </Pressable>
+            </View>
+            <Pressable onPress={() => router.push('/notifications' as any)} style={styles.overlayIconBtn}>
+              <Bell size={22} color={COLORS.white} />
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Right side buttons */}
+        <View style={styles.sideButtons} pointerEvents="box-none">
+          {/* Avatar + follow */}
+          <View style={styles.avatarContainer}>
+            <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)}>
+              <Avatar uri={item.userPhoto} username={item.username} size={48}
+                style={{ borderWidth: 2, borderColor: COLORS.white }} />
+            </Pressable>
+            {!isOwnPost && (
+              <Pressable
+                onPress={() => handleFollowToggle(item.userId, item.username, item.userPhoto)}
+                style={[styles.followPill, { backgroundColor: isFollowing ? 'transparent' : COLORS.error }]}
               >
-                <Repeat2 size={24} color={theme.text} />
-                <Text style={[styles.longPressText, { color: theme.text }]}>Repost</Text>
+                {isFollowing
+                  ? <Text style={styles.followPillTextFollowing}>✓</Text>
+                  : <Plus size={14} color={COLORS.white} />
+                }
               </Pressable>
             )}
-            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
-            <Pressable 
-              onPress={() => selectedPost && handleReport(selectedPost)} 
-              style={styles.longPressItem}
-            >
-              <Flag size={24} color={theme.text} />
-              <Text style={[styles.longPressText, { color: theme.text }]}>Report</Text>
+          </View>
+
+          {/* Like button */}
+          <Pressable style={styles.sideBtn} onPress={() => handleLike(item.id)}>
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <Heart
+                size={36}
+                color={item.isLiked ? COLORS.error : COLORS.white}
+                fill={item.isLiked ? COLORS.error : 'transparent'}
+              />
+            </Animated.View>
+            <Text style={styles.sideBtnCount}>{formatCount(item.likes)}</Text>
+          </Pressable>
+
+          {/* Comment button */}
+          <Pressable style={styles.sideBtn} onPress={() => handleComment(item.id)}>
+            <MessageCircle size={36} color={COLORS.white} />
+            <Text style={styles.sideBtnCount}>{formatCount(item.comments || 0)}</Text>
+          </Pressable>
+
+          {/* Share button */}
+          <Pressable style={styles.sideBtn} onPress={() => handleSendToUsers(item)}>
+            <Share size={34} color={COLORS.white} />
+            <Text style={styles.sideBtnCount}>Share</Text>
+          </Pressable>
+
+          {/* Report button */}
+          <Pressable style={styles.sideBtn} onPress={() => handleReport(item)}>
+            <Flag size={30} color={COLORS.white} />
+          </Pressable>
+        </View>
+
+        {/* Bottom overlay: user info */}
+        <View style={styles.bottomOverlay} pointerEvents="box-none">
+          {isReposted && (
+            <View style={styles.repostRow}>
+              <Repeat2 size={13} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.repostLabel}>{item.repostedByUsername} reposted</Text>
+            </View>
+          )}
+          <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)}>
+            <Text style={styles.overlayUsername}>@{item.username}</Text>
+          </Pressable>
+          {item.caption ? (
+            <Text style={styles.overlayCaption} numberOfLines={2}>{item.caption}</Text>
+          ) : null}
+          {item.hashtags && item.hashtags.length > 0 && (
+            <Text style={styles.overlayHashtags} numberOfLines={1}>{item.hashtags.join(' ')}</Text>
+          )}
+          {item.musicTitle ? (
+            <View style={styles.musicRow}>
+              <Music size={13} color={COLORS.white} />
+              <Text style={styles.musicText} numberOfLines={1}>
+                {item.musicTitle}{item.musicArtist ? ` • ${item.musicArtist}` : ''}
+              </Text>
+            </View>
+          ) : null}
+          {item.location ? (
+            <View style={styles.locationRow}>
+              <MapPin size={13} color={COLORS.white} />
+              <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
+  // ── Main render ──────────────────────────────────────────────────────────────
+
+  return (
+    <View style={styles.container}>
+      <View
+        style={styles.feedWrapper}
+        onLayout={e => setFeedHeight(e.nativeEvent.layout.height)}
+      >
+        <FlatList
+          data={filteredPosts}
+          renderItem={renderPost}
+          keyExtractor={item => item.id}
+          showsVerticalScrollIndicator={false}
+          pagingEnabled
+          snapToInterval={feedHeight}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          getItemLayout={(_, index) => ({ length: feedHeight, offset: feedHeight * index, index })}
+          ListEmptyComponent={() => (
+            <View style={[styles.emptyContainer, { height: feedHeight }]}>
+              {activeTab === 'following' ? (
+                <>
+                  <Users size={56} color={COLORS.skyBlue} />
+                  <Text style={styles.emptyTitle}>No posts yet</Text>
+                  <Text style={styles.emptySubtitle}>Follow players and clubs to see their content here</Text>
+                  <Pressable onPress={() => router.push('/(tabs)/search' as any)} style={styles.emptyBtn}>
+                    <Search size={18} color={COLORS.white} />
+                    <Text style={styles.emptyBtnText}>Discover Players</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  {user && <Text style={styles.emptyWelcome}>Welcome, {user.fullName.split(' ')[0]}!</Text>}
+                  <Text style={styles.emptySubtitle}>Your feed is empty.</Text>
+                  <Pressable onPress={() => router.push('/(tabs)/create' as any)} style={styles.emptyBtn}>
+                    <Video size={18} color={COLORS.white} />
+                    <Text style={styles.emptyBtnText}>Share Your First Play</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
+        />
+      </View>
+
+      {/* Long press menu modal */}
+      <Modal visible={showLongPressMenu} transparent animationType="fade" onRequestClose={() => setShowLongPressMenu(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowLongPressMenu(false)}>
+          <View style={[styles.menuSheet, { backgroundColor: theme.card }]}>
+            {selectedPost && userReposts[selectedPost.originalPostId || selectedPost.id] ? (
+              <Pressable onPress={() => selectedPost && handleRemoveRepost(selectedPost)} style={styles.menuItem}>
+                <Repeat2 size={22} color={COLORS.error} />
+                <Text style={[styles.menuText, { color: COLORS.error }]}>Remove Repost</Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => selectedPost && handleRepost(selectedPost)} style={styles.menuItem}>
+                <Repeat2 size={22} color={theme.text} />
+                <Text style={[styles.menuText, { color: theme.text }]}>Repost</Text>
+              </Pressable>
+            )}
+            <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => selectedPost && handleShareOutside(selectedPost)} style={styles.menuItem}>
+              <Share size={22} color={theme.text} />
+              <Text style={[styles.menuText, { color: theme.text }]}>Share Outside App</Text>
             </Pressable>
-            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
-            <Pressable 
-              onPress={() => selectedPost && handleShareOutside(selectedPost)} 
-              style={styles.longPressItem}
-            >
-              <Share size={24} color={theme.text} />
-              <Text style={[styles.longPressText, { color: theme.text }]}>Share Outside App</Text>
+            <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => selectedPost && handleDownloadVideo(selectedPost)} style={styles.menuItem}>
+              <Download size={22} color={theme.text} />
+              <Text style={[styles.menuText, { color: theme.text }]}>Download Video</Text>
             </Pressable>
-            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
-            <Pressable 
-              onPress={() => selectedPost && handleDownloadVideo(selectedPost)} 
-              style={styles.longPressItem}
-            >
-              <Download size={24} color={theme.text} />
-              <Text style={[styles.longPressText, { color: theme.text }]}>Download Video</Text>
+            <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => selectedPost && handleReport(selectedPost)} style={styles.menuItem}>
+              <Flag size={22} color={theme.text} />
+              <Text style={[styles.menuText, { color: theme.text }]}>Report</Text>
             </Pressable>
-            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
-            <Pressable 
-              onPress={() => selectedPost && handleBlockUser(selectedPost)} 
-              style={styles.longPressItem}
-            >
-              <UserX size={24} color={COLORS.error} />
-              <Text style={[styles.longPressText, { color: COLORS.error }]}>Block User</Text>
+            <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => selectedPost && handleBlockUser(selectedPost)} style={styles.menuItem}>
+              <UserX size={22} color={COLORS.error} />
+              <Text style={[styles.menuText, { color: COLORS.error }]}>Block User</Text>
             </Pressable>
-            <View style={[styles.longPressSeparator, { backgroundColor: theme.border }]} />
-            <Pressable onPress={() => setShowLongPressMenu(false)} style={styles.longPressItem}>
-              <Text style={[styles.longPressText, { color: theme.textSecondary }]}>Cancel</Text>
+            <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />
+            <Pressable onPress={() => setShowLongPressMenu(false)} style={styles.menuItem}>
+              <Text style={[styles.menuText, { color: theme.textSecondary }]}>Cancel</Text>
             </Pressable>
           </View>
         </Pressable>
       </Modal>
 
+      {/* Send modal */}
       <Modal
         visible={showSendModal}
         transparent
         animationType="slide"
-        onRequestClose={() => {
-          setShowSendModal(false);
-          setSelectedUsers([]);
-          setSelectedPost(null);
-        }}
+        onRequestClose={() => { setShowSendModal(false); setSelectedUsers([]); setSelectedPost(null); }}
       >
-        <View style={styles.sendModalOverlay}>
-          <View style={[styles.sendModalContent, { backgroundColor: theme.background }]}>
-            <View style={styles.sendModalHeader}>
-              <Text style={[styles.sendModalTitle, { color: theme.text }]}>Send to</Text>
-              <Pressable onPress={() => {
-                setShowSendModal(false);
-                setSelectedUsers([]);
-                setSelectedPost(null);
-                setSendSearchQuery('');
-              }}>
-                <Text style={[styles.sendModalCancel, { color: COLORS.skyBlue }]}>Cancel</Text>
+        <View style={styles.sendOverlay}>
+          <View style={[styles.sendSheet, { backgroundColor: theme.background }]}>
+            <View style={styles.sendHeader}>
+              <Text style={[styles.sendTitle, { color: theme.text }]}>Send to</Text>
+              <Pressable onPress={() => { setShowSendModal(false); setSelectedUsers([]); setSelectedPost(null); setSendSearchQuery(''); }}>
+                <Text style={[styles.sendCancel, { color: COLORS.skyBlue }]}>Cancel</Text>
               </Pressable>
             </View>
-            <View style={styles.frequentContactsSection}>
-              <Text style={[styles.frequentContactsTitle, { color: theme.textSecondary }]}>Frequent</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.frequentContactsScroll}>
-                {chatUsers.slice(0, 8).map((user) => (
-                  <Pressable
-                    key={user.id}
-                    onPress={() => handleQuickSend(user.id, user.username)}
-                    style={styles.frequentContactItem}
-                  >
-                    <Avatar uri={user.profilePhoto} username={user.username} size={56} style={{ marginBottom: 6 }} />
-                    <Text style={[styles.frequentContactName, { color: theme.text }]} numberOfLines={1}>
-                      {user.username}
-                    </Text>
+            <View style={styles.frequentSection}>
+              <Text style={[styles.frequentLabel, { color: theme.textSecondary }]}>Frequent</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {chatUsers.slice(0, 8).map(u => (
+                  <Pressable key={u.id} onPress={() => handleQuickSend(u.id, u.username)} style={styles.frequentItem}>
+                    <Avatar uri={u.profilePhoto} username={u.username} size={52} style={{ marginBottom: 4 }} />
+                    <Text style={[styles.frequentName, { color: theme.text }]} numberOfLines={1}>{u.username}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
             </View>
-            <View style={[styles.sendModalSearchContainer, { backgroundColor: theme.inputBackground }]}>
-              <Search size={18} color={theme.textSecondary} />
+            <View style={[styles.searchBox, { backgroundColor: theme.inputBackground }]}>
+              <Search size={16} color={theme.textSecondary} />
               <TextInput
-                style={[styles.sendModalSearchInput, { color: theme.text }]}
+                style={[styles.searchInput, { color: theme.text }]}
                 placeholder="Search users..."
                 placeholderTextColor={theme.textSecondary}
                 value={sendSearchQuery}
                 onChangeText={setSendSearchQuery}
               />
               {sendSearchQuery.length > 0 && (
-                <Pressable onPress={() => setSendSearchQuery('')}>
-                  <X size={18} color={theme.textSecondary} />
-                </Pressable>
+                <Pressable onPress={() => setSendSearchQuery('')}><X size={16} color={theme.textSecondary} /></Pressable>
               )}
             </View>
-            <ScrollView style={styles.sendModalUserList}>
-              {filteredChatUsers.map((mockUser) => {
-                const isSelected = selectedUsers.includes(mockUser.id);
+            <ScrollView style={styles.userList}>
+              {filteredChatUsers.map(u => {
+                const sel = selectedUsers.includes(u.id);
                 return (
-                  <Pressable
-                    key={mockUser.id}
-                    onPress={() => handleToggleUserSelection(mockUser.id)}
-                    style={[styles.sendModalUserItem, { backgroundColor: isSelected ? `${COLORS.skyBlue}20` : 'transparent' }]}
-                  >
-                    <Avatar uri={mockUser.profilePhoto} username={mockUser.username} size={48} />
-                    <View style={styles.sendModalUserInfo}>
-                      <Text style={[styles.sendModalUsername, { color: theme.text }]}>{mockUser.username}</Text>
-                      <Text style={[styles.sendModalFullName, { color: theme.textSecondary }]}>{mockUser.fullName}</Text>
+                  <Pressable key={u.id} onPress={() => handleToggleUserSelection(u.id)}
+                    style={[styles.userItem, { backgroundColor: sel ? `${COLORS.skyBlue}20` : 'transparent' }]}>
+                    <Avatar uri={u.profilePhoto} username={u.username} size={44} />
+                    <View style={styles.userItemInfo}>
+                      <Text style={[styles.userItemName, { color: theme.text }]}>{u.username}</Text>
+                      <Text style={[styles.userItemFull, { color: theme.textSecondary }]}>{u.fullName}</Text>
                     </View>
-                    <View style={[styles.sendModalCheckbox, { 
-                      borderColor: isSelected ? COLORS.skyBlue : theme.border, 
-                      backgroundColor: isSelected ? COLORS.skyBlue : 'transparent' 
-                    }]}>
-                      {isSelected && <Text style={styles.sendModalCheck}>✓</Text>}
+                    <View style={[styles.checkbox, { borderColor: sel ? COLORS.skyBlue : theme.border, backgroundColor: sel ? COLORS.skyBlue : 'transparent' }]}>
+                      {sel && <Text style={styles.checkmark}>✓</Text>}
                     </View>
                   </Pressable>
                 );
               })}
               {filteredChatUsers.length === 0 && (
-                <View style={styles.sendModalEmpty}>
-                  <Text style={[styles.sendModalEmptyText, { color: theme.textSecondary }]}>No users found</Text>
+                <View style={styles.noUsers}>
+                  <Text style={[styles.noUsersText, { color: theme.textSecondary }]}>No users found</Text>
                 </View>
               )}
             </ScrollView>
             <Pressable
               onPress={handleConfirmSend}
-              style={[styles.sendModalButton, { 
-                backgroundColor: selectedUsers.length > 0 ? COLORS.skyBlue : theme.border 
-              }]}
               disabled={selectedUsers.length === 0}
+              style={[styles.sendBtn, { backgroundColor: selectedUsers.length > 0 ? COLORS.skyBlue : theme.border }]}
             >
-              <Text style={[styles.sendModalButtonText, { 
-                color: selectedUsers.length > 0 ? COLORS.white : theme.textSecondary 
-              }]}>Send to {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''}</Text>
+              <Text style={[styles.sendBtnText, { color: selectedUsers.length > 0 ? COLORS.white : theme.textSecondary }]}>
+                Send to {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''}
+              </Text>
             </Pressable>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  feedWrapper: {
-    flex: 1,
-    position: 'relative',
-  },
-  feedContainer: {
-    flex: 1,
-  },
-  swipeIndicator: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  swipeIndicatorContent: {
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  swipeIndicatorText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  topHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-  },
-  logo: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  headerIcon: {
-    padding: 4,
-  },
-  tabHeader: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 4,
-    gap: 24,
-  },
-  tab: {
-    paddingVertical: 4,
-    paddingHorizontal: 16,
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.primary,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 8,
-  },
-  postCard: {
-    marginBottom: 24,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginHorizontal: 12,
-  },
-  repostHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
-    gap: 6,
-  },
-  repostText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  repostBadge: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    zIndex: 10,
-  },
-  repostAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  repostIconContainer: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: COLORS.skyBlue,
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  postHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-  },
-  postHeaderUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  postAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  postHeaderInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  postUsername: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  postRole: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  followButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  followButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  videoWrapper: {
-    position: 'relative',
-    width: '100%',
-  },
-  videoTouchOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  postImage: {
-    width: '100%',
-  },
-  metadataOverlay: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    right: 16,
-  },
-  overlayItemSingle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  overlayText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '500',
-    maxWidth: 200,
-  },
-  postActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  leftActions: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  actionBtn: {
-    padding: 4,
-  },
-  postInfo: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  likesCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  postCaption: {
-    fontSize: 14,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  captionUsername: {
-    fontWeight: '600',
-  },
-  postHashtags: {
-    fontSize: 14,
-    color: COLORS.skyBlue,
-    marginTop: 4,
-  },
-  viewComments: {
-    fontSize: 13,
-    marginTop: 6,
-  },
-  votesCount: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  likeAnimationContainer: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -40,
-    marginTop: -40,
-    pointerEvents: 'none',
-  },
-  longPressOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  longPressMenu: {
-    width: '85%',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  longPressItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  longPressText: {
-    fontSize: 17,
-    fontWeight: '500',
-  },
-  longPressSeparator: {
-    height: 1,
-    marginLeft: 60,
-  },
-  sendModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  sendModalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    maxHeight: '80%',
-  },
-  sendModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-  },
-  sendModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  sendModalCancel: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  sendModalSearchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    gap: 10,
-  },
-  sendModalSearchInput: {
-    flex: 1,
-    fontSize: 15,
-  },
-  sendModalUserList: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  sendModalUserItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginTop: 8,
-    gap: 12,
-  },
-  sendModalAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  sendModalUserInfo: {
-    flex: 1,
-  },
-  sendModalUsername: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  sendModalFullName: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  sendModalCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendModalCheck: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  sendModalButton: {
-    marginHorizontal: 20,
-    marginVertical: 20,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  sendModalButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  sendModalEmpty: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  sendModalEmptyText: {
-    fontSize: 15,
-  },
-  frequentContactsSection: {
-    paddingVertical: 16,
-    paddingLeft: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-  },
-  frequentContactsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  frequentContactsScroll: {
-    flexDirection: 'row',
-  },
-  frequentContactItem: {
-    alignItems: 'center',
-    marginRight: 16,
-    width: 64,
-  },
-  frequentContactAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginBottom: 6,
-  },
-  frequentContactName: {
-    fontSize: 12,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  emptyListContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  emptyStateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-    paddingVertical: 60,
-  },
-  emptyStateIconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyStateTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  emptyStateSubtitle: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 28,
-    lineHeight: 22,
-  },
-  createPostButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 28,
-    gap: 8,
-  },
-  createPostButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyWelcome: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  emptyActionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    width: '100%',
-    gap: 14,
-  },
-  emptyActionIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyActionText: { flex: 1 },
-  emptyActionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  emptyActionDesc: { fontSize: 13 },
+  container: { flex: 1, backgroundColor: '#000' },
+  feedWrapper: { flex: 1 },
+
+  // Post card (fullscreen)
+  postCard: { width: '100%', backgroundColor: '#000', overflow: 'hidden' },
+
+  // Animations
+  heartAnimation: {
+    position: 'absolute', top: '50%', left: '50%',
+    marginLeft: -50, marginTop: -50, zIndex: 20, pointerEvents: 'none',
+  },
+  playPauseAnimation: {
+    position: 'absolute', top: '50%', left: '50%',
+    marginLeft: -44, marginTop: -44, zIndex: 20, pointerEvents: 'none',
+  },
+  playPauseBg: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+
+  // Top overlay
+  topOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+    paddingTop: Platform.OS === 'android' ? 36 : 8,
+  },
+  overlayHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8,
+  },
+  overlayIconBtn: { padding: 6, width: 40, alignItems: 'center' },
+  tabRow: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+  tabBtn: { alignItems: 'center', paddingVertical: 4 },
+  tabBtnText: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.65)' },
+  tabBtnActive: { color: COLORS.white },
+  tabUnderline: { height: 2, width: '100%', backgroundColor: COLORS.white, marginTop: 3, borderRadius: 1 },
+
+  // Right side buttons
+  sideButtons: {
+    position: 'absolute', right: 12, bottom: 120, zIndex: 10,
+    alignItems: 'center', gap: 20,
+  },
+  avatarContainer: { alignItems: 'center', marginBottom: 4 },
+  followPill: {
+    width: 22, height: 22, borderRadius: 11,
+    justifyContent: 'center', alignItems: 'center',
+    marginTop: -10, borderWidth: 2, borderColor: COLORS.white,
+  },
+  followPillTextFollowing: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+  sideBtn: { alignItems: 'center', gap: 4 },
+  sideBtnCount: { color: COLORS.white, fontSize: 13, fontWeight: '600', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+
+  // Bottom overlay
+  bottomOverlay: {
+    position: 'absolute', left: 0, right: 90, bottom: 90, zIndex: 10,
+    paddingHorizontal: 16, gap: 4,
+  },
+  repostRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
+  repostLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '500' },
+  overlayUsername: {
+    color: COLORS.white, fontSize: 16, fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+  },
+  overlayCaption: {
+    color: COLORS.white, fontSize: 14, lineHeight: 19,
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+  },
+  overlayHashtags: { color: COLORS.skyBlue, fontSize: 13, fontWeight: '500' },
+  musicRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  musicText: { color: COLORS.white, fontSize: 13, flex: 1 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  locationText: { color: COLORS.white, fontSize: 13, flex: 1 },
+
+  // Empty state
+  emptyContainer: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40, gap: 16 },
+  emptyWelcome: { fontSize: 22, fontWeight: '700', color: COLORS.white },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: COLORS.white },
+  emptySubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.7)', textAlign: 'center', lineHeight: 22 },
+  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.skyBlue, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 24, marginTop: 8 },
+  emptyBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+
+  // Long press menu
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  menuSheet: { width: '88%', borderRadius: 16, overflow: 'hidden' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 17, paddingHorizontal: 20, gap: 14 },
+  menuText: { fontSize: 16, fontWeight: '500' },
+  menuDivider: { height: 1, marginLeft: 54 },
+
+  // Send modal
+  sendOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sendSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 20, maxHeight: '80%' },
+  sendHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.2)' },
+  sendTitle: { fontSize: 18, fontWeight: '700' },
+  sendCancel: { fontSize: 16, fontWeight: '600' },
+  frequentSection: { paddingVertical: 14, paddingLeft: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.2)' },
+  frequentLabel: { fontSize: 13, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  frequentItem: { alignItems: 'center', marginRight: 14, width: 60 },
+  frequentName: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
+  searchBox: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginVertical: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, gap: 8 },
+  searchInput: { flex: 1, fontSize: 15 },
+  userList: { flex: 1, paddingHorizontal: 20 },
+  userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, marginTop: 6, gap: 12 },
+  userItemInfo: { flex: 1 },
+  userItemName: { fontSize: 15, fontWeight: '600' },
+  userItemFull: { fontSize: 13, marginTop: 1 },
+  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  checkmark: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  sendBtn: { marginHorizontal: 20, marginVertical: 18, paddingVertical: 15, borderRadius: 12, alignItems: 'center' },
+  sendBtnText: { fontSize: 16, fontWeight: '700' },
+  noUsers: { paddingVertical: 36, alignItems: 'center' },
+  noUsersText: { fontSize: 15 },
 });
