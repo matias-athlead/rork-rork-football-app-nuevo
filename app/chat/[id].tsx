@@ -404,8 +404,17 @@ export default function ChatScreen() {
         }} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
         </Pressable>
-        <Avatar uri={chatUser?.profilePhoto || ''} username={chatUser?.username || '...'} size={40} />
-        <Text style={[styles.username, { color: theme.text }]}>{chatUser?.username || '...'}</Text>
+        <Pressable
+          onPress={() => {
+            if (chatUser?.id && !String(chatUser.id).startsWith('group_')) {
+              router.push(`/profile/${chatUser.id}` as any);
+            }
+          }}
+          style={styles.headerUser}
+        >
+          <Avatar uri={chatUser?.profilePhoto || ''} username={chatUser?.username || '...'} size={40} />
+          <Text style={[styles.username, { color: theme.text }]}>{chatUser?.username || '...'}</Text>
+        </Pressable>
         <View style={styles.headerActions}>
           <Pressable onPress={() => router.push(`/audio-call/${id}` as any)} style={styles.headerAction}>
             <Phone size={22} color={theme.text} />
@@ -960,7 +969,12 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  headerUser: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   headerActions: {
     flexDirection: 'row',

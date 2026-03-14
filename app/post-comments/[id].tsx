@@ -116,10 +116,14 @@ export default function PostCommentsScreen() {
 
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentItem}>
-      <Avatar uri={item.userPhoto} username={item.username} size={36} />
+      <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)}>
+        <Avatar uri={item.userPhoto} username={item.username} size={36} />
+      </Pressable>
       <View style={styles.commentContent}>
         <View style={styles.commentHeader}>
-          <Text style={[styles.commentUsername, { color: theme.text }]}>{item.username}</Text>
+          <Pressable onPress={() => router.push(`/profile/${item.userId}` as any)}>
+            <Text style={[styles.commentUsername, { color: theme.text }]}>{item.username}</Text>
+          </Pressable>
           <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{formatTime(item.createdAt)}</Text>
         </View>
         <Text style={[styles.commentText, { color: theme.text }]}>{item.text}</Text>

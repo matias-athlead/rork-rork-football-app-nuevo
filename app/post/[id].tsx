@@ -537,7 +537,7 @@ export default function PostDetailScreen() {
         </Pressable>
         
         <View style={styles.content}>
-          <View style={styles.userInfo}>
+          <Pressable onPress={() => router.push(`/profile/${post.userId}` as any)} style={styles.userInfo}>
             <Avatar uri={post.userPhoto} username={post.username} size={48} />
             <View style={styles.userInfoText}>
               <Text style={[styles.username, { color: theme.text }]}>{post.username}</Text>
@@ -545,7 +545,7 @@ export default function PostDetailScreen() {
                 {post.userRole ? post.userRole.toUpperCase() : 'USER'}
               </Text>
             </View>
-          </View>
+          </Pressable>
 
           {post.caption && (
             <Text style={[styles.caption, { color: theme.text }]}>{post.caption}</Text>

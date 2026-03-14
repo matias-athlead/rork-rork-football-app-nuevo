@@ -109,12 +109,15 @@ export default function NotificationsScreen() {
     >
       {!item.isRead && <View style={[styles.unreadDot, { backgroundColor: COLORS.primary }]} />}
       <View style={styles.notificationLeft}>
-        <View style={styles.avatarWrapper}>
+        <Pressable
+          onPress={() => { if (item.userId) router.push(`/profile/${item.userId}` as any); }}
+          style={styles.avatarWrapper}
+        >
           <Avatar uri={item.userPhoto} username={item.username} size={46} />
           <View style={[styles.iconBadge, { backgroundColor: theme.card, borderColor: theme.background }]}>
             {getNotificationIcon(item.type)}
           </View>
-        </View>
+        </Pressable>
         <View style={styles.notificationContent}>
           <Text style={[styles.notificationText, { color: theme.text }]} numberOfLines={2}>
             <Text style={styles.boldUsername}>{item.username}</Text>
