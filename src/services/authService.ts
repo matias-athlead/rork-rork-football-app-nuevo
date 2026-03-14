@@ -77,6 +77,20 @@ function hashPassword(password: string): string {
   return password.trim();
 }
 
+// Legacy hash used in older cached builds — kept for fallback login comparison only.
+function legacyHashPassword(password: string): string {
+  const normalized = password.trim();
+  let hash = 0;
+  const salt = 'athlead_salt_2024';
+  const str = normalized + salt;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash | 0;
+  }
+  return `hashed_${Math.abs(hash).toString(16)}_${str.length}`;
+}
+
 function generateToken(): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 16);
@@ -171,10 +185,25 @@ export const authService = {
 
     const computedHash = hashPassword(password);
     const storedHash = registeredUser.passwordHash;
-    console.log('[AUTH] login — storedHash:', storedHash, '| computedHash:', computedHash, '| match:', storedHash === computedHash);
+    const legacyHash = legacyHashPassword(password);
+    const plainMatch = storedHash === computedHash;
+    const legacyMatch = !plainMatch && storedHash === legacyHash;
+    console.log('[AUTH] login — plainMatch:', plainMatch, '| legacyMatch:', legacyMatch);
 
-    if (storedHash !== computedHash) {
-      throw new Error(`Incorrect password for "${email}". (If you just registered, try again — hash mismatch detected.)`);
+    if (!plainMatch && !legacyMatch) {
+      throw new Error(`Incorrect password for "${email}".`);
+    }
+
+    // Migrate legacy hash to plain text so future logins always use plain comparison
+    if (legacyMatch) {
+      try {
+        const users = await loadUsersStore();
+        if (users[email]) {
+          users[email].passwordHash = computedHash;
+          await saveUsersStore(users);
+          console.log('[AUTH] login — migrated legacy hash to plain text for:', email);
+        }
+      } catch {}
     }
 
     // Clear any stale session before writing new one
