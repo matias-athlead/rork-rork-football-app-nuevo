@@ -47,10 +47,10 @@ export function NotificationCountProvider({ children }: { children: React.ReactN
     return () => sub.remove();
   }, [refreshCount]);
 
-  return (
-    <NotificationCountContext.Provider value={{ unreadCount, refreshCount, resetCount }}>
-      {children}
-    </NotificationCountContext.Provider>
+  return React.createElement(
+    NotificationCountContext.Provider,
+    { value: { unreadCount, refreshCount, resetCount } },
+    children,
   );
 }
 
