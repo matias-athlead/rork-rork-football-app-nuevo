@@ -7,6 +7,8 @@ import { AuthProvider, useAuth } from "@/src/hooks/useAuth";
 import { ThemeProvider } from "@/src/hooks/useTheme";
 import { PrivacySettingsProvider } from "@/src/hooks/usePrivacySettings";
 import { BlockedUsersProvider } from "@/src/hooks/useBlockedUsers";
+import { NotificationCountProvider } from "@/src/hooks/useNotificationCount";
+import { notificationService } from "@/src/services/notificationService";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,6 +21,8 @@ function RootLayoutNav() {
   useEffect(() => {
     if (!isLoading) {
       SplashScreen.hideAsync();
+      // Request push notification permissions once app is ready
+      notificationService.requestPermissions();
     }
   }, [isLoading]);
 
@@ -58,7 +62,9 @@ export default function RootLayout() {
           <AuthProvider>
             <PrivacySettingsProvider>
               <BlockedUsersProvider>
-                <RootLayoutNav />
+                <NotificationCountProvider>
+                  <RootLayoutNav />
+                </NotificationCountProvider>
               </BlockedUsersProvider>
             </PrivacySettingsProvider>
           </AuthProvider>

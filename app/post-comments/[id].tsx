@@ -8,6 +8,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import { COLORS } from '@/src/utils/theme';
 import * as Haptics from 'expo-haptics';
 import { socialService } from '@/src/services/socialService';
+import { notificationService } from '@/src/services/notificationService';
 import { Comment } from '@/src/types/Post';
 
 export default function PostCommentsScreen() {
@@ -18,14 +19,30 @@ export default function PostCommentsScreen() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [postOwnerId, setPostOwnerId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     const load = async () => {
       if (!postId) return;
-      const loaded = await socialService.getComments(Array.isArray(postId) ? postId[0] : postId);
+      const pid = Array.isArray(postId) ? postId[0] : postId;
+      const loaded = await socialService.getComments(pid);
       setComments(loaded);
       setIsLoading(false);
+      // Find post owner for notifications
+      try {
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        const postsData = await AsyncStorage.getItem('@athlead_user_posts');
+        if (postsData) {
+          const allPosts = JSON.parse(postsData);
+          for (const uid in allPosts) {
+            if (allPosts[uid].some((p: any) => p.id === pid)) {
+              setPostOwnerId(uid);
+              break;
+            }
+          }
+        }
+      } catch {}
     };
     load();
   }, [postId]);
@@ -62,6 +79,24 @@ export default function PostCommentsScreen() {
     setComments(updated);
     setNewComment('');
     setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+
+    // Notify post owner (if not commenting on own post)
+    if (postOwnerId && postOwnerId !== user.id) {
+      void notificationService.addNotification(
+        postOwnerId,
+        {
+          type: 'comment',
+          userId: user.id,
+          username: user.username,
+          userPhoto: user.profilePhoto,
+          content: `commented: "${newComment.trim().slice(0, 50)}${newComment.trim().length > 50 ? '…' : ''}"`,
+          postId: pid,
+          isRead: false,
+        },
+        '💬 New comment',
+        `${user.username} commented on your post`,
+      );
+    }
   };
 
   const formatTime = (iso: string) => {

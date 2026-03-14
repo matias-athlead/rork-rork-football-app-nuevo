@@ -8,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/src/hooks/useTheme';
 import { useAuth } from '@/src/hooks/useAuth';
 import { authService } from '@/src/services/authService';
+import { notificationService } from '@/src/services/notificationService';
 import { User } from '@/src/types/User';
 import { COLORS } from '@/src/utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -355,6 +356,23 @@ export default function ChatScreen() {
           AsyncStorage.setItem(replyKey, JSON.stringify(updated)).catch(() => {});
           return updated;
         });
+        // Fire a local push notification for the incoming message
+        if (user) {
+          void notificationService.addNotification(
+            user.id,
+            {
+              type: 'message',
+              userId: chatId,
+              username: chatUser?.username || 'Someone',
+              userPhoto: chatUser?.profilePhoto || '',
+              content: replyText,
+              chatId,
+              isRead: false,
+            },
+            `💬 ${chatUser?.username || 'New message'}`,
+            replyText,
+          );
+        }
       }, replyDelay);
     }
   };

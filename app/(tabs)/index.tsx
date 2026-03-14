@@ -255,16 +255,21 @@ export default function HomeScreen() {
     ));
     void socialService.toggleLike(postId);
     if (post && !post.isLiked && user && post.userId !== user.id) {
-      void notificationService.addNotification(post.userId, {
-        type: 'like',
-        userId: user.id,
-        username: user.username,
-        userPhoto: user.profilePhoto,
-        content: 'liked your post',
-        postId: post.id,
-        postThumbnail: post.thumbnailUrl,
-        isRead: false,
-      });
+      void notificationService.addNotification(
+        post.userId,
+        {
+          type: 'like',
+          userId: user.id,
+          username: user.username,
+          userPhoto: user.profilePhoto,
+          content: 'liked your post',
+          postId: post.id,
+          postThumbnail: post.thumbnailUrl,
+          isRead: false,
+        },
+        '❤️ New like',
+        `${user.username} liked your post`,
+      );
     }
   };
 

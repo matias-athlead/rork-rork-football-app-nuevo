@@ -68,14 +68,19 @@ export default function SearchScreen() {
       if (nowFollowing) {
         newSet.add(userId);
         if (currentUser && userId !== currentUser.id) {
-          void notificationService.addNotification(userId, {
-            type: 'follow',
-            userId: currentUser.id,
-            username: currentUser.username,
-            userPhoto: currentUser.profilePhoto,
-            content: 'started following you',
-            isRead: false,
-          });
+          void notificationService.addNotification(
+            userId,
+            {
+              type: 'follow',
+              userId: currentUser.id,
+              username: currentUser.username,
+              userPhoto: currentUser.profilePhoto,
+              content: 'started following you',
+              isRead: false,
+            },
+            '👤 New follower',
+            `${currentUser.username} started following you`,
+          );
         }
       } else {
         newSet.delete(userId);

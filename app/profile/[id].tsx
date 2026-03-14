@@ -57,14 +57,19 @@ export default function ProfileDetailScreen() {
     const { isFollowing: nowFollowing } = await socialService.toggleFollow(user.id);
     setIsFollowing(nowFollowing);
     if (nowFollowing) {
-      void notificationService.addNotification(user.id, {
-        type: 'follow',
-        userId: currentUser.id,
-        username: currentUser.username,
-        userPhoto: currentUser.profilePhoto,
-        content: 'started following you',
-        isRead: false,
-      });
+      void notificationService.addNotification(
+        user.id,
+        {
+          type: 'follow',
+          userId: currentUser.id,
+          username: currentUser.username,
+          userPhoto: currentUser.profilePhoto,
+          content: 'started following you',
+          isRead: false,
+        },
+        '👤 New follower',
+        `${currentUser.username} started following you`,
+      );
     }
   };
 

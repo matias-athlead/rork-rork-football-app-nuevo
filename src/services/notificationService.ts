@@ -171,7 +171,9 @@ export const notificationService = {
 
   async addNotification(
     recipientId: string,
-    notification: Omit<Notification, 'id' | 'createdAt'>
+    notification: Omit<Notification, 'id' | 'createdAt'>,
+    pushTitle?: string,
+    pushBody?: string,
   ): Promise<void> {
     try {
       const key = `${IN_APP_NOTIFICATIONS_KEY}_${recipientId}`;
@@ -184,6 +186,13 @@ export const notificationService = {
       };
       notifications.unshift(newNotification);
       await AsyncStorage.setItem(key, JSON.stringify(notifications.slice(0, 100)));
+
+      if (pushTitle && pushBody) {
+        await this.sendLocalNotification(pushTitle, pushBody, {
+          type: notification.type,
+          recipientId,
+        });
+      }
     } catch (error) {
       console.error('[Notifications] Error adding notification:', error);
     }
@@ -196,6 +205,30 @@ export const notificationService = {
       return existing ? JSON.parse(existing) : [];
     } catch {
       return [];
+    }
+  },
+
+  async getUnreadCount(recipientId: string): Promise<number> {
+    try {
+      const notifications = await this.getNotifications(recipientId);
+      return notifications.filter(n => !n.isRead).length;
+    } catch {
+      return 0;
+    }
+  },
+
+  async markAsRead(recipientId: string, notificationId: string): Promise<void> {
+    try {
+      const key = `${IN_APP_NOTIFICATIONS_KEY}_${recipientId}`;
+      const existing = await AsyncStorage.getItem(key);
+      if (!existing) return;
+      const notifications: Notification[] = JSON.parse(existing);
+      const updated = notifications.map(n =>
+        n.id === notificationId ? { ...n, isRead: true } : n
+      );
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+    } catch (error) {
+      console.error('[Notifications] Error marking notification as read:', error);
     }
   },
 
